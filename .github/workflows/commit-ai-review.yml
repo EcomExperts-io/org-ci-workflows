@@ -1,0 +1,164 @@
+name: Commit AI Review
+
+on:
+  workflow_call:
+    inputs:
+      branches:
+        description: "Branches to run on (default: all)"
+        required: false
+        type: string
+    secrets:
+      OPENAI_KEY:
+        required: true
+      SLACK_BOT_TOKEN:
+        required: true
+      CHANNEL_ID:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  review-latest-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Gather commit data
+        id: info
+        run: |
+          SHA="${GITHUB_SHA}"
+          REPO="${GITHUB_REPOSITORY}"
+          ACTOR="${GITHUB_ACTOR}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+
+          # Diff for context
+          git show --no-color --unified=3 "$SHA" > /tmp/diff.patch
+
+          # List changed files with status, keep tabs
+          git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
+
+      - name: Load rules from .cursor/rules
+        run: |
+          RULE_DIR=".cursor/rules"
+          jq -n '[]' > /tmp/rules.json
+          if [ -d "$RULE_DIR" ]; then
+            while IFS= read -r -d '' file; do
+              CONTENT=$(sed 's/\\/\\\\/g; s/"/\\"/g' "$file" | awk '{printf "%s\\n",$0}')
+              jq --arg name "$(basename "$file")" \
+                 --arg path "$file" \
+                 --arg text "$CONTENT" \
+                 '. += [{"name":$name,"path":$path,"text":$text}]' \
+                 /tmp/rules.json > /tmp/rules.tmp && mv /tmp/rules.tmp /tmp/rules.json
+            done < <(find "$RULE_DIR" -type f -maxdepth 5 -print0 | sort -z)
+          else
+            echo "Rules directory not found at $RULE_DIR" >&2
+          fi
+
+      - name: Build numbered files bundle
+        run: |
+          jq -n '{files:[]}' > /tmp/files.json
+          while IFS=$'\t' read -r status path; do
+            case "$path" in
+              *.liquid|*.js|*.css)
+                if [ -f "$path" ]; then
+                  NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
+                  jq --arg p "$path" --arg n "$NUMBERED" '.files += [{"path":$p,"numbered":$n}]' /tmp/files.json > /tmp/files.tmp && mv /tmp/files.tmp /tmp/files.json
+                fi
+              ;;
+            esac
+          done < /tmp/changed.txt
+
+      - name: Build AI input
+        run: |
+          RULES=$(cat /tmp/rules.json)
+          DIFF=$(sed 's/\\/\\\\/g; s/"/\\"/g' /tmp/diff.patch | tr -d '\r' | awk '{printf "%s\\n",$0}')
+          FILES=$(cat /tmp/files.json)
+          printf '{"rules":%s,"diff":"%s","files":%s}' "$RULES" "$DIFF" "$FILES" > /tmp/ai_input.json
+
+      - name: Call OpenAI for review
+        id: ai
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        run: |
+          REQ=$(jq -c -n \
+            --arg content "$(cat /tmp/ai_input.json)" \
+            '{
+              model:"gpt-4o-mini",
+              response_format:{type:"json_object"},
+              temperature:0,
+              messages:[
+                {
+                  "role":"system",
+                  "content":"You are an automated code reviewer for Shopify themes. Use the detection rules to scan the SINGLE commit. Rules are provided as an array under rules[], where each item has {name, path, text}. Treat inline <style> and <script> inside .liquid as CSS and JS. You are given numbered file contents under files[]. For EACH violation, you MUST include the exact repository-relative file path from files[].path and an exact line number from that file. Format every item exactly as: RULEID: reason in `path` Line: `N`. Example: LIQ-006: <img> missing width and height in `sections/product.liquid` Line: `42`. Do not omit the path. If you cannot determine it, choose the most likely file from files[]. Never return objects. Return up to 50 issues. Output only JSON with: overall.grade (best, good, average, poor) and overall.key_issues (array of strings in the required format)."
+                },
+                { "role":"user", "content":$content }
+              ]
+            }')
+          RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer $OPENAI_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$REQ")
+          jq -r '.choices[0].message.content' <<< "$RESP" > /tmp/review.json
+          cat /tmp/review.json
+
+          if ! jq -e '(.overall.key_issues // []) | all( test(" in `.+` Line: `[0-9]+`$") )' /tmp/review.json >/dev/null; then
+            echo "AI output missing required backticked file path or line number in one or more issues:"
+            cat /tmp/review.json
+            exit 1
+          fi
+
+      - name: Prepare Slack message
+        id: prep
+        run: |
+          SHA="${{ steps.info.outputs.sha }}"
+          SHORT=${SHA:0:7}
+          AUTHOR="${{ steps.info.outputs.actor }}"
+          REPO="${{ steps.info.outputs.repo }}"
+          COMMIT_URL="https://github.com/$REPO/commit/$SHA"
+          GRADE=$(jq -r '.overall.grade // "average"' /tmp/review.json)
+          COUNT=$(jq -r '(.overall.key_issues // []) | length' /tmp/review.json)
+
+          ISSUES=$(jq -r '
+            (.overall.key_issues // [])
+            | to_entries
+            | map("\(.key+1). \(.value | sub("^[A-Za-z]+-[0-9]+: *"; ""))")
+            | join("\n")
+          ' /tmp/review.json)
+
+          {
+            echo "*Commit Review*"
+            echo "*Author:* $AUTHOR"
+            echo "*Commit:* <$COMMIT_URL|$SHORT>"
+            echo "*Grade:* $GRADE"
+            echo "*Issues ($COUNT):*"
+            if [ -n "$ISSUES" ]; then
+              echo "$ISSUES"
+            else
+              echo "None"
+            fi
+          } > /tmp/slack.txt
+
+          cat /tmp/slack.txt
+
+      - name: Post to Slack
+        if: success()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/json" \
+            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack.txt)" '{channel: $channel, text: $text}')" \
+            https://slack.com/api/chat.postMessage
