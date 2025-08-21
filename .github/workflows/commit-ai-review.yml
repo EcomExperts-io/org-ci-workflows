@@ -2,11 +2,6 @@ name: Commit AI Review
 
 on:
   workflow_call:
-    inputs:
-      branches:
-        description: "Branches to run on (default: all)"
-        required: false
-        type: string
     secrets:
       OPENAI_KEY:
         required: true
