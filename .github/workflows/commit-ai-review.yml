@@ -1,4 +1,4 @@
-name: Commit AI Review
+name: Commit AI Review (Rules Only)
 
 on:
   workflow_call:
@@ -24,7 +24,6 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
-      # Optional guard so only your org can call this workflow
       - name: Guard caller org
         run: |
           if [ "${{ github.repository_owner }}" != "EcomExperts-io" ]; then
@@ -52,11 +51,9 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
-          git show --no-color --unified=3 "$SHA" > /tmp/diff.patch
+          # latest commit only
           git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
 
-      # Fetch rules from the central repo .cursor/rules
-      # If org-ci-workflows is public, no token is needed
       - name: Checkout central rules repo
         uses: actions/checkout@v4
         with:
@@ -65,33 +62,47 @@ jobs:
           path: rules-src
           fetch-depth: 1
 
-      - name: Load rules from central .cursor/rules
+      - name: Load rules from cursor_rules or .cursor/rules
+        id: rules
         run: |
           set -e
-          RULE_DIR="rules-src/.cursor/rules"
-          jq -n '[]' > /tmp/rules.json
-          if [ -d "$RULE_DIR" ]; then
-            while IFS= read -r -d '' file; do
-              CONTENT=$(sed 's/\\/\\\\/g; s/"/\\"/g' "$file" | awk '{printf "%s\\n",$0}')
-              jq --arg name "$(basename "$file")" \
-                 --arg path "$file" \
-                 --arg text "$CONTENT" \
-                 '. += [{"name":$name,"path":$path,"text":$text}]' \
-                 /tmp/rules.json > /tmp/rules.tmp && mv /tmp/rules.tmp /tmp/rules.json
-            done < <(find "$RULE_DIR" -type f -maxdepth 5 -print0 | sort -z)
+          PRIMARY_DIR="rules-src/cursor_rules"
+          FALLBACK_DIR="rules-src/.cursor/rules"
+          if [ -d "$PRIMARY_DIR" ]; then
+            RULE_DIR="$PRIMARY_DIR"
+          elif [ -d "$FALLBACK_DIR" ]; then
+            RULE_DIR="$FALLBACK_DIR"
           else
-            echo "Rules directory not found at $RULE_DIR" >&2
+            echo "No rules directory found. Expected $PRIMARY_DIR or $FALLBACK_DIR" >&2
             exit 1
           fi
+          echo "rule_dir=$RULE_DIR" >> "$GITHUB_OUTPUT"
 
-      - name: Build numbered files bundle
+          jq -n '[]' > /tmp/rules.json
+          while IFS= read -r -d '' file; do
+            CONTENT=$(sed 's/\\/\\\\/g; s/"/\\"/g' "$file" | awk '{printf "%s\\n",$0}')
+            jq --arg name "$(basename "$file")" \
+               --arg path "$file" \
+               --arg text "$CONTENT" \
+               '. += [{"name":$name,"path":$path,"text":$text}]' \
+               /tmp/rules.json > /tmp/rules.tmp && mv /tmp/rules.tmp /tmp/rules.json
+          done < <(find "$RULE_DIR" -type f -maxdepth 5 -print0 | sort -z)
+
+          # Build an index of allowed rule_ids (filenames)
+          jq -r '.[].name' /tmp/rules.json | jq -R -s 'split("\n") | map(select(length>0))' > /tmp/rules_index.json
+
+          echo "Loaded rules:"
+          jq 'length as $n | "count=\($n)"' /tmp/rules.json
+          echo "Rule names:"
+          jq -r '.[]' /tmp/rules_index.json | head -50
+
+      - name: Build numbered files bundle from latest commit only
         run: |
           set -e
           jq -n '{files:[]}' > /tmp/files.json
-          # Capture a broader set of web/theme files
           while IFS=$'\t' read -r status path; do
             case "$path" in
-              *.liquid|*.js|*.ts|*.css|*.scss|*.json)
+              *.liquid|*.json|*.js|*.mjs|*.cjs|*.ts|*.tsx|*.jsx|*.css|*.scss|*.sass|*.vue|*.html|*.svg|*.yml|*.yaml|*.md)
                 if [ -f "$path" ]; then
                   NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
                   jq --arg p "$path" --arg n "$NUMBERED" \
@@ -102,21 +113,20 @@ jobs:
             esac
           done < /tmp/changed.txt
 
-      - name: Build AI input
+          echo "Changed files captured:"
+          jq '.files | length as $n | "count=\($n)"' /tmp/files.json
+
+      - name: Build AI input (rules only, no diff)
         run: |
           set -e
           RULES=$(cat /tmp/rules.json)
-          DIFF=$(sed 's/\\/\\\\/g; s/"/\\"/g' /tmp/diff.patch | tr -d '\r' | awk '{printf "%s\\n",$0}')
           FILES=$(cat /tmp/files.json)
-          printf '{"rules":%s,"diff":"%s","files":%s}' "$RULES" "$DIFF" "$FILES" > /tmp/ai_input.json
-          # Quick visibility for debugging
-          echo "Prepared AI input sizes:"
+          printf '{"rules":%s,"files":%s}' "$RULES" "$FILES" > /tmp/ai_input.json
+          echo "ai_input.json sizes:"
           echo "rules.json bytes: $(wc -c < /tmp/rules.json)"
-          echo "diff.patch bytes: $(wc -c < /tmp/diff.patch)"
           echo "files.json bytes: $(wc -c < /tmp/files.json)"
 
-      # Structured JSON response for robust parsing
-      - name: Call OpenAI for review
+      - name: Call OpenAI strictly by rules
         id: ai
         env:
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
@@ -131,7 +141,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are an automated code reviewer for Shopify themes. You MUST output strict JSON only. Schema: {overall:{grade:string, summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. Only include an issue if you can point to an exact repository-relative file path and a single 1-based line number. Rules are provided in rules[] with fields {name, path, text}. Treat inline <style>/<script> inside .liquid as CSS/JS. Numbered file contents are in files[] items with fields {path, numbered} where numbered looks like \"12: const x = 1\". Use those numbers. Grade must be one of: best, good, average, poor. If unsure, omit the issue rather than guessing."
+                  "content": "You are a rules-only static checker. Only evaluate the provided files[] against the provided rules[]. Do not apply any additional heuristics or best practices. Do not invent rules. Report an issue only when it is an explicit violation of a rule from rules[]. Each issue must reference an existing rule_id that equals the rule file name (rules[].name), and must include an exact repository-relative path from files[].path and a single 1-based line number taken from files[].numbered. If you are not certain of a violation, omit it. Output strict JSON only with schema: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
                 },
                 { "role":"user", "content": $content }
               ]
@@ -141,29 +151,33 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$REQ")
 
-          # Save raw content then coerce to the expected shape
           jq -r '.choices[0].message.content' <<< "$RESP" > /tmp/review_raw.json || true
           if ! [ -s /tmp/review_raw.json ]; then
-            echo "OpenAI returned an empty response or invalid JSON. Full API payload follows:"
+            echo "OpenAI returned empty or invalid JSON:"
             echo "$RESP"
             exit 1
           fi
 
-          jq '
+          # Normalize and keep only issues that reference a real rule file
+          jq --slurpfile allow /tmp/rules_index.json '
             .overall as $o
             | {
                 overall: {
-                  grade: (($o.grade // "average") | tostring),
                   summary: ($o.summary // ""),
                   key_issues: (
                     ($o.key_issues // [])
                     | map({
-                        rule_id: (.rule_id // "RULE"),
+                        rule_id: (.rule_id // ""),
                         reason: (.reason // ""),
                         path: (.path // ""),
                         line: ((.line // 0) | tonumber)
                       })
-                    | map(select((.path|length) > 0 and (.line|tonumber) > 0))
+                    | map(select(
+                        (.rule_id|length)>0 and
+                        (.path|length)>0 and
+                        ((.line|tonumber)>0) and
+                        (.rule_id as $r | ($allow[0] | index($r)))
+                      ))
                   )
                 }
               }
@@ -172,17 +186,33 @@ jobs:
           echo "Normalized review JSON:"
           cat /tmp/review.json
 
-      - name: Validate issues have path and line
+      - name: Validate issues have real rule_id, path, line
         run: |
           set -e
           jq -e '
             (.overall.key_issues | type) == "array"
-            and ((.overall.key_issues // []) | all(.path and (.path|length>0) and (.line|tonumber)>0))
+            and ((.overall.key_issues // []) | all(
+              .rule_id and (.rule_id|length>0) and
+              .path and (.path|length>0) and
+              (.line|tonumber)>0
+            ))
           ' /tmp/review.json >/dev/null || {
-            echo "AI output failed validation. Review JSON below:"
+            echo "Validation failed. Review JSON follows:"
             cat /tmp/review.json
             exit 1
           }
+
+      - name: Compute grade locally
+        id: score
+        run: |
+          set -e
+          COUNT=$(jq -r '(.overall.key_issues // []) | length' /tmp/review.json)
+          if [ "$COUNT" -eq 0 ]; then GRADE="best";
+          elif [ "$COUNT" -le 2 ]; then GRADE="good";
+          elif [ "$COUNT" -le 5 ]; then GRADE="average";
+          else GRADE="poor"; fi
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
 
       - name: Prepare Slack message
         id: prep
@@ -194,8 +224,8 @@ jobs:
           REPO="${{ steps.info.outputs.repo }}"
           COMMIT_URL="https://github.com/$REPO/commit/$SHA"
 
-          GRADE=$(jq -r '.overall.grade' /tmp/review.json)
-          COUNT=$(jq -r '(.overall.key_issues // []) | length' /tmp/review.json)
+          GRADE="${{ steps.score.outputs.grade }}"
+          COUNT="${{ steps.score.outputs.count }}"
 
           ISSUES=$(jq -r '
             (.overall.key_issues // [])
@@ -228,7 +258,7 @@ jobs:
         run: |
           set -e
           if [ -z "$SLACK_BOT_TOKEN" ]; then
-            echo "SLACK_BOT_TOKEN is empty. Ensure it is passed from the caller or use secrets: inherit."
+            echo "SLACK_BOT_TOKEN is empty"
             exit 1
           fi
           curl -sS -X POST \
@@ -238,7 +268,6 @@ jobs:
             https://slack.com/api/chat.postMessage | tee /tmp/slack_resp.json
 
           if ! jq -e '.ok == true' /tmp/slack_resp.json >/dev/null; then
-            echo "Slack API returned an error:"
+            echo "Slack API error:"
             cat /tmp/slack_resp.json
             exit 1
-          fi
