@@ -256,18 +256,24 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: |
-          set -e
-          if [ -z "$SLACK_BOT_TOKEN" ]; then
+          set -euo pipefail
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
             echo "SLACK_BOT_TOKEN is empty"
             exit 1
           fi
-          curl -sS -X POST \
+
+          # Post message
+          RESP="$(curl -sS -X POST \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
             --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack.txt)" '{channel: $channel, text: $text}')" \
-            https://slack.com/api/chat.postMessage | tee /tmp/slack_resp.json
+            https://slack.com/api/chat.postMessage)"
 
+          echo "$RESP" > /tmp/slack_resp.json
+
+          # Validate Slack response
           if ! jq -e '.ok == true' /tmp/slack_resp.json >/dev/null; then
             echo "Slack API error:"
             cat /tmp/slack_resp.json
             exit 1
+          fi
