@@ -3,12 +3,9 @@ name: Commit AI Review
 on:
   workflow_call:
     secrets:
-      OPENAI_KEY:
-        required: true
-      SLACK_BOT_TOKEN:
-        required: true
       CHANNEL_ID:
         required: true
+        description: "Slack channel ID where review results will be posted"
 
 permissions:
   contents: read
@@ -51,8 +48,6 @@ jobs:
           repository: EcomExperts-io/org-ci-workflows
           ref: Main
           path: rules-src
-          # If this repo is private and the checkout fails, either make it public
-          # or pass a PAT via: token: ${{ secrets.RULES_REPO_TOKEN }}
 
       - name: Load rules from central .cursor/rules
         run: |
