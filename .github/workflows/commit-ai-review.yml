@@ -3,12 +3,15 @@ name: Commit AI Review
 on:
   workflow_call:
     secrets:
-      OPENAI_KEY:
-        required: true
-      SLACK_BOT_TOKEN:
-        required: true
       CHANNEL_ID:
         required: true
+        description: "Slack channel ID to post the review"
+      OPENAI_KEY:
+        required: true
+        description: "OpenAI API key"
+      SLACK_BOT_TOKEN:
+        required: true
+        description: "Slack bot token with chat:write"
 
 permissions:
   contents: read
@@ -21,6 +24,14 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
+      # Optional guard so only your org can call this workflow
+      - name: Guard caller org
+        run: |
+          if [ "${{ github.repository_owner }}" != "EcomExperts-io" ]; then
+            echo "Unauthorized caller: ${{ github.repository_owner }}"
+            exit 1
+          fi
+
       - name: Checkout caller repo
         uses: actions/checkout@v4
         with:
@@ -44,13 +55,15 @@ jobs:
           git show --no-color --unified=3 "$SHA" > /tmp/diff.patch
           git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
 
-      # Always fetch rules from the central repo at .cursor/rules
+      # Fetch rules from the central repo .cursor/rules
+      # If org-ci-workflows is public, no token is needed
       - name: Checkout central rules repo
         uses: actions/checkout@v4
         with:
           repository: EcomExperts-io/org-ci-workflows
-          ref: Main
+          ref: Main        # change to Main if your default branch uses capital M
           path: rules-src
+          fetch-depth: 1
 
       - name: Load rules from central .cursor/rules
         run: |
@@ -75,9 +88,10 @@ jobs:
         run: |
           set -e
           jq -n '{files:[]}' > /tmp/files.json
+          # Capture a broader set of web/theme files
           while IFS=$'\t' read -r status path; do
             case "$path" in
-              *.liquid|*.js|*.css)
+              *.liquid|*.js|*.ts|*.css|*.scss|*.json)
                 if [ -f "$path" ]; then
                   NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
                   jq --arg p "$path" --arg n "$NUMBERED" \
@@ -95,7 +109,13 @@ jobs:
           DIFF=$(sed 's/\\/\\\\/g; s/"/\\"/g' /tmp/diff.patch | tr -d '\r' | awk '{printf "%s\\n",$0}')
           FILES=$(cat /tmp/files.json)
           printf '{"rules":%s,"diff":"%s","files":%s}' "$RULES" "$DIFF" "$FILES" > /tmp/ai_input.json
+          # Quick visibility for debugging
+          echo "Prepared AI input sizes:"
+          echo "rules.json bytes: $(wc -c < /tmp/rules.json)"
+          echo "diff.patch bytes: $(wc -c < /tmp/diff.patch)"
+          echo "files.json bytes: $(wc -c < /tmp/files.json)"
 
+      # Structured JSON response for robust parsing
       - name: Call OpenAI for review
         id: ai
         env:
@@ -111,23 +131,58 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content":"You are an automated code reviewer for Shopify themes. Use the detection rules to scan the SINGLE commit. Rules are provided as an array under rules[], where each item has {name, path, text}. Treat inline <style> and <script> inside .liquid as CSS and JS. You are given numbered file contents under files[]. For EACH violation, include the exact repository-relative file path from files[].path and an exact line number. Format: RULEID: reason in `path` Line: `N`."
+                  "content": "You are an automated code reviewer for Shopify themes. You MUST output strict JSON only. Schema: {overall:{grade:string, summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. Only include an issue if you can point to an exact repository-relative file path and a single 1-based line number. Rules are provided in rules[] with fields {name, path, text}. Treat inline <style>/<script> inside .liquid as CSS/JS. Numbered file contents are in files[] items with fields {path, numbered} where numbered looks like \"12: const x = 1\". Use those numbers. Grade must be one of: best, good, average, poor. If unsure, omit the issue rather than guessing."
                 },
-                { "role":"user", "content":$content }
+                { "role":"user", "content": $content }
               ]
             }')
           RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
             -H "Authorization: Bearer $OPENAI_KEY" \
             -H "Content-Type: application/json" \
             -d "$REQ")
-          jq -r '.choices[0].message.content' <<< "$RESP" > /tmp/review.json
-          cat /tmp/review.json
 
-          if ! jq -e '(.overall.key_issues // []) | all( test(" in `.+` Line: `[0-9]+`$") )' /tmp/review.json >/dev/null; then
-            echo "AI output missing required backticked file path or line number in one or more issues:"
-            cat /tmp/review.json
+          # Save raw content then coerce to the expected shape
+          jq -r '.choices[0].message.content' <<< "$RESP" > /tmp/review_raw.json || true
+          if ! [ -s /tmp/review_raw.json ]; then
+            echo "OpenAI returned an empty response or invalid JSON. Full API payload follows:"
+            echo "$RESP"
             exit 1
           fi
+
+          jq '
+            .overall as $o
+            | {
+                overall: {
+                  grade: (($o.grade // "average") | tostring),
+                  summary: ($o.summary // ""),
+                  key_issues: (
+                    ($o.key_issues // [])
+                    | map({
+                        rule_id: (.rule_id // "RULE"),
+                        reason: (.reason // ""),
+                        path: (.path // ""),
+                        line: ((.line // 0) | tonumber)
+                      })
+                    | map(select((.path|length) > 0 and (.line|tonumber) > 0))
+                  )
+                }
+              }
+          ' /tmp/review_raw.json > /tmp/review.json
+
+          echo "Normalized review JSON:"
+          cat /tmp/review.json
+
+      - name: Validate issues have path and line
+        run: |
+          set -e
+          jq -e '
+            (.overall.key_issues | type) == "array"
+            and ((.overall.key_issues // []) | all(.path and (.path|length>0) and (.line|tonumber)>0))
+          ' /tmp/review.json >/dev/null || {
+            echo "AI output failed validation. Review JSON below:"
+            cat /tmp/review.json
+            exit 1
+          }
 
       - name: Prepare Slack message
         id: prep
@@ -138,12 +193,14 @@ jobs:
           AUTHOR="${{ steps.info.outputs.actor }}"
           REPO="${{ steps.info.outputs.repo }}"
           COMMIT_URL="https://github.com/$REPO/commit/$SHA"
-          GRADE=$(jq -r '.overall.grade // "average"' /tmp/review.json)
+
+          GRADE=$(jq -r '.overall.grade' /tmp/review.json)
           COUNT=$(jq -r '(.overall.key_issues // []) | length' /tmp/review.json)
+
           ISSUES=$(jq -r '
             (.overall.key_issues // [])
             | to_entries
-            | map("\(.key+1). \(.value | sub("^[A-Za-z]+-[0-9]+: *"; ""))")
+            | map("\(.key+1). \(.value.rule_id): \(.value.reason) in `\(.value.path)` Line: `\(.value.line)`")
             | join("\n")
           ' /tmp/review.json)
 
@@ -160,6 +217,7 @@ jobs:
             fi
           } > /tmp/slack.txt
 
+          echo "Slack message preview:"
           cat /tmp/slack.txt
 
       - name: Post to Slack
@@ -169,8 +227,18 @@ jobs:
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: |
           set -e
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "SLACK_BOT_TOKEN is empty. Ensure it is passed from the caller or use secrets: inherit."
+            exit 1
+          fi
           curl -sS -X POST \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-            -H "Content-type: application/json" \
+            -H "Content-type: application/json; charset=utf-8" \
             --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack.txt)" '{channel: $channel, text: $text}')" \
-            https://slack.com/api/chat.postMessage
+            https://slack.com/api/chat.postMessage | tee /tmp/slack_resp.json
+
+          if ! jq -e '.ok == true' /tmp/slack_resp.json >/dev/null; then
+            echo "Slack API returned an error:"
+            cat /tmp/slack_resp.json
+            exit 1
+          fi
