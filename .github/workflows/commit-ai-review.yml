@@ -45,9 +45,11 @@ jobs:
       - name: Checkout central rules repo
         uses: actions/checkout@v4
         with:
-          repository: EcomExperts-io/org-ci-workflows
+          repository: ${{ github.repository_owner }}/org-ci-workflows
           ref: Main
           path: rules-src
+          token: ${{ secrets.RULES_REPO_TOKEN }}  # PAT or GitHub App token with read access
+          fetch-depth: 1
 
       - name: Load rules from central .cursor/rules
         run: |
