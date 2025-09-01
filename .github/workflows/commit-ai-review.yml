@@ -18,6 +18,13 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
+      - name: Guard caller org
+        run: |
+          if [ "${{ github.repository_owner }}" != "EcomExperts-io" ]; then
+            echo "Unauthorized caller: ${{ github.repository_owner }}"
+            exit 1
+          fi
+
       - name: Checkout caller repo
         uses: actions/checkout@v4
         with:
@@ -45,10 +52,9 @@ jobs:
       - name: Checkout central rules repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/org-ci-workflows
+          repository: EcomExperts-io/org-ci-workflows
           ref: Main
           path: rules-src
-          token: ${{ secrets.RULES_REPO_TOKEN }}  # PAT or GitHub App token with read access
           fetch-depth: 1
 
       - name: Load rules from central .cursor/rules
