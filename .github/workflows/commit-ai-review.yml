@@ -3,9 +3,12 @@ name: Commit AI Review
 on:
   workflow_call:
     secrets:
+      OPENAI_KEY:
+        required: true
+      SLACK_BOT_TOKEN:
+        required: true
       CHANNEL_ID:
         required: true
-        description: "Slack channel ID where review results will be posted"
 
 permissions:
   contents: read
@@ -18,13 +21,6 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
-      - name: Guard caller org
-        run: |
-          if [ "${{ github.repository_owner }}" != "EcomExperts-io" ]; then
-            echo "Unauthorized caller: ${{ github.repository_owner }}"
-            exit 1
-          fi
-
       - name: Checkout caller repo
         uses: actions/checkout@v4
         with:
@@ -55,7 +51,6 @@ jobs:
           repository: EcomExperts-io/org-ci-workflows
           ref: Main
           path: rules-src
-          fetch-depth: 1
 
       - name: Load rules from central .cursor/rules
         run: |
