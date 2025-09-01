@@ -135,7 +135,7 @@ jobs:
           REQ=$(jq -c -n \
             --arg content "$(cat /tmp/ai_input.json)" \
             '{
-              model:"gpt-4o-mini",
+              model:"gpt-4o",
               response_format:{type:"json_object"},
               temperature:0,
               messages:[
