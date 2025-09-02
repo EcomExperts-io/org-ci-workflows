@@ -262,18 +262,18 @@ jobs:
           ' /tmp/review.json)
 
           {
-            echo "🔍 *Commit Review Report*"
+            echo "*Commit Review Report*"
             echo ""
-            echo "👤 *Author:* $AUTHOR"
-            echo "📝 *Commit:* <$COMMIT_URL|$SHORT>"
-            echo "📊 *Grade:* $GRADE"
+            echo "*Author:* $AUTHOR"
+            echo "*Commit:* <$COMMIT_URL|$SHORT>"
+            echo "*Grade:* $GRADE"
             echo ""
             if [ "$COUNT" -gt 0 ]; then
-              echo "⚠️ *Issues Found ($COUNT):*"
+              echo "*Issues Found ($COUNT):*"
               echo ""
               echo "$ISSUES"
             else
-              echo "✨ *No issues found!* All code follows the established rules."
+              echo "*No issues found!* All code follows the established rules."
             fi
           } > /tmp/slack.txt
 
