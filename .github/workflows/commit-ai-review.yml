@@ -83,16 +83,23 @@ jobs:
             CONTENT=$(sed 's/\\/\\\\/g; s/"/\\"/g' "$file" | awk '{printf "%s\\n",$0}')
             
             # Extract metadata from frontmatter if it exists
-            METADATA=""
+            ALWAYS_APPLY="false"
+            GLOBS=""
             if head -n 1 "$file" | grep -q "^---"; then
-              METADATA=$(sed -n '2,/^---/p' "$file" | sed '$d' | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
+              # Parse frontmatter for alwaysApply and globs
+              FRONTMATTER=$(sed -n '2,/^---/p' "$file" | sed '$d')
+              if echo "$FRONTMATTER" | grep -q "alwaysApply: *true"; then
+                ALWAYS_APPLY="true"
+              fi
+              GLOBS=$(echo "$FRONTMATTER" | grep "^globs:" | sed 's/globs: *//' | tr '\n' ',' | sed 's/,$//')
             fi
             
             jq --arg name "$(basename "$file")" \
                --arg path "$file" \
                --arg text "$CONTENT" \
-               --arg metadata "$METADATA" \
-               '. += [{"name":$name,"path":$path,"text":$text,"metadata":$metadata}]' \
+               --arg always_apply "$ALWAYS_APPLY" \
+               --arg globs "$GLOBS" \
+               '. += [{"name":$name,"path":$path,"text":$text,"always_apply":($always_apply=="true"),"globs":$globs}]' \
                /tmp/rules.json > /tmp/rules.tmp && mv /tmp/rules.tmp /tmp/rules.json
           done < <(find "$RULE_DIR" -type f -maxdepth 5 -print0 | sort -z)
 
@@ -117,12 +124,10 @@ jobs:
                   # Determine applicable rules for this file
                   APPLICABLE_RULES=$(jq -c --arg filepath "$path" '
                     map(select(
-                      (.metadata | contains("alwaysApply: true")) or
-                      (.metadata | contains("globs:") and (
-                        (.metadata | split("\n") | map(select(startswith("globs:"))) | .[0] // "" | 
-                         sub("globs: *"; "") | split(",") | map(gsub(" "; "")) | 
-                         map(select(length > 0)) | 
-                         any(. as $glob | $filepath | test($glob | gsub("\\*"; ".*") | gsub("\\?"; "."))))
+                      .always_apply == true or
+                      (.globs != "" and (
+                        .globs | split(",") | map(gsub(" "; "")) | map(select(length > 0)) |
+                        any(. as $glob | $filepath | test($glob | gsub("\\*"; ".*") | gsub("\\?"; ".")))
                       ))
                     )) | map(.name | sub("\\.mdc$"; ""))
                   ' /tmp/rules.json)
