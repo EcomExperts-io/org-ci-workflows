@@ -81,15 +81,23 @@ jobs:
           jq -n '[]' > /tmp/rules.json
           while IFS= read -r -d '' file; do
             CONTENT=$(sed 's/\\/\\\\/g; s/"/\\"/g' "$file" | awk '{printf "%s\\n",$0}')
+            
+            # Extract metadata from frontmatter if it exists
+            METADATA=""
+            if head -n 1 "$file" | grep -q "^---"; then
+              METADATA=$(sed -n '2,/^---/p' "$file" | sed '$d' | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
+            fi
+            
             jq --arg name "$(basename "$file")" \
                --arg path "$file" \
                --arg text "$CONTENT" \
-               '. += [{"name":$name,"path":$path,"text":$text}]' \
+               --arg metadata "$METADATA" \
+               '. += [{"name":$name,"path":$path,"text":$text,"metadata":$metadata}]' \
                /tmp/rules.json > /tmp/rules.tmp && mv /tmp/rules.tmp /tmp/rules.json
           done < <(find "$RULE_DIR" -type f -maxdepth 5 -print0 | sort -z)
 
-          # Build an index of allowed rule_ids (filenames)
-          jq -r '.[].name' /tmp/rules.json | jq -R -s 'split("\n") | map(select(length>0))' > /tmp/rules_index.json
+          # Build an index of allowed rule_ids (filenames without extension)
+          jq -r '.[].name | sub("\\.mdc$"; "")' /tmp/rules.json | jq -R -s 'split("\n") | map(select(length>0))' > /tmp/rules_index.json
 
           echo "Loaded rules:"
           jq 'length as $n | "count=\($n)"' /tmp/rules.json
@@ -102,11 +110,25 @@ jobs:
           jq -n '{files:[]}' > /tmp/files.json
           while IFS=$'\t' read -r status path; do
             case "$path" in
-              *.liquid|*.json|*.js|*.mjs|*.cjs|*.ts|*.tsx|*.jsx|*.css|*.scss|*.sass|*.vue|*.html|*.svg|*.yml|*.yaml|*.md)
+              *.liquid|*.json|*.js|*.mjs|*.cjs|*.ts|*.tsx|*.jsx|*.css|*.scss|*.sass|*.vue|*.html|*.svg|*.yml|*.yaml|*.md|*.mdc)
                 if [ -f "$path" ]; then
                   NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
-                  jq --arg p "$path" --arg n "$NUMBERED" \
-                     '.files += [{"path":$p,"numbered":$n}]' \
+                  
+                  # Determine applicable rules for this file
+                  APPLICABLE_RULES=$(jq -c --arg filepath "$path" '
+                    map(select(
+                      (.metadata | contains("alwaysApply: true")) or
+                      (.metadata | contains("globs:") and (
+                        (.metadata | split("\n") | map(select(startswith("globs:"))) | .[0] // "" | 
+                         sub("globs: *"; "") | split(",") | map(gsub(" "; "")) | 
+                         map(select(length > 0)) | 
+                         any(. as $glob | $filepath | test($glob | gsub("\\*"; ".*") | gsub("\\?"; "."))))
+                      ))
+                    )) | map(.name | sub("\\.mdc$"; ""))
+                  ' /tmp/rules.json)
+                  
+                  jq --arg p "$path" --arg n "$NUMBERED" --argjson rules "$APPLICABLE_RULES" \
+                     '.files += [{"path":$p,"numbered":$n,"applicable_rules":$rules}]' \
                      /tmp/files.json > /tmp/files.tmp && mv /tmp/files.tmp /tmp/files.json
                 fi
               ;;
@@ -141,7 +163,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are a rules-only static checker. Only evaluate the provided files[] against the provided rules[]. Do not apply any additional heuristics or best practices. Do not invent rules. Report an issue only when it is an explicit violation of a rule from rules[]. Each issue must reference an existing rule_id that equals the rule file name (rules[].name), and must include an exact repository-relative path from files[].path and a single 1-based line number taken from files[].numbered. If you are not certain of a violation, omit it. Output strict JSON only with schema: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
+                  "content": "You are a comprehensive code reviewer that evaluates files against coding standards. For each file, check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for ALL violations of the provided rules - be thorough and comprehensive. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., \"rules-of-enagagment\" not \"rules-of-enagagment.mdc\"), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from files[].numbered. Be detailed in your analysis - check for multiple violations per rule and multiple rules per file. Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
                 },
                 { "role":"user", "content": $content }
               ]
@@ -207,10 +229,10 @@ jobs:
         run: |
           set -e
           COUNT=$(jq -r '(.overall.key_issues // []) | length' /tmp/review.json)
-          if [ "$COUNT" -eq 0 ]; then GRADE="best";
-          elif [ "$COUNT" -le 2 ]; then GRADE="good";
-          elif [ "$COUNT" -le 5 ]; then GRADE="average";
-          else GRADE="poor"; fi
+          if [ "$COUNT" -eq 0 ]; then GRADE="✅ excellent";
+          elif [ "$COUNT" -le 2 ]; then GRADE="👍 good";
+          elif [ "$COUNT" -le 5 ]; then GRADE="⚠️ needs improvement";
+          else GRADE="❌ requires attention"; fi
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
 
@@ -230,20 +252,23 @@ jobs:
           ISSUES=$(jq -r '
             (.overall.key_issues // [])
             | to_entries
-            | map("\(.key+1). \(.value.rule_id): \(.value.reason) in `\(.value.path)` Line: `\(.value.line)`")
-            | join("\n")
+            | map("• **\(.value.rule_id)** (Line \(.value.line)): \(.value.reason)\n  📁 `\(.value.path)`")
+            | join("\n\n")
           ' /tmp/review.json)
 
           {
-            echo "*Commit Review*"
-            echo "*Author:* $AUTHOR"
-            echo "*Commit:* <$COMMIT_URL|$SHORT>"
-            echo "*Grade:* $GRADE"
-            echo "*Issues ($COUNT):*"
-            if [ -n "$ISSUES" ]; then
+            echo "🔍 *Commit Review Report*"
+            echo ""
+            echo "👤 *Author:* $AUTHOR"
+            echo "📝 *Commit:* <$COMMIT_URL|$SHORT>"
+            echo "📊 *Grade:* $GRADE"
+            echo ""
+            if [ "$COUNT" -gt 0 ]; then
+              echo "⚠️ *Issues Found ($COUNT):*"
+              echo ""
               echo "$ISSUES"
             else
-              echo "None"
+              echo "✨ *No issues found!* All code follows the established rules."
             fi
           } > /tmp/slack.txt
 
