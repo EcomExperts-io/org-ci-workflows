@@ -257,7 +257,7 @@ jobs:
           ISSUES=$(jq -r '
             (.overall.key_issues // [])
             | to_entries
-            | map("• **\(.value.rule_id)** `(Line \(.value.line))`: \(.value.reason)\n  📄 `\(.value.path)`")
+            | map("• \(.value.rule_id): \(.value.reason) `\(.value.path)` - `(Line \(.value.line))`")
             | join("\n\n")
           ' /tmp/review.json)
 
