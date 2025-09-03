@@ -160,7 +160,7 @@ jobs:
         run: |
           set -e
           REQ=$(jq -c -n \
-            --arg content "$(cat /tmp/ai_input.json)" \
+            --slurpfile content /tmp/ai_input.json \
             '{
               model:"gpt-4o",
               response_format:{type:"json_object"},
@@ -170,7 +170,7 @@ jobs:
                   "role":"system",
                   "content": "You are a comprehensive code reviewer that evaluates files against coding standards. For each file, check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for ALL violations of the provided rules - be thorough and comprehensive. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., \"rules-of-enagagment\" not \"rules-of-enagagment.mdc\"), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from files[].numbered. Be detailed in your analysis - check for multiple violations per rule and multiple rules per file. Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
                 },
-                { "role":"user", "content": $content }
+                { "role":"user", "content": ($content[0] | tostring) }
               ]
             }')
           RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
