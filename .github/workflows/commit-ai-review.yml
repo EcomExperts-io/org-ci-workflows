@@ -117,7 +117,7 @@ jobs:
           jq -n '{files:[]}' > /tmp/files.json
           while IFS=$'\t' read -r status path; do
             case "$path" in
-              *.liquid|*.json|*.js|*.mjs|*.cjs|*.ts|*.tsx|*.jsx|*.css|*.scss|*.sass|*.vue|*.html|*.svg|*.yml|*.yaml|*.md|*.mdc)
+              *.liquid|*.js|*.css)
                 if [ -f "$path" ]; then
                   NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
                   
@@ -159,7 +159,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -e
-          REQ=$(jq -c -n \
+          jq -c -n \
             --slurpfile content /tmp/ai_input.json \
             '{
               model:"gpt-4o",
@@ -172,11 +172,11 @@ jobs:
                 },
                 { "role":"user", "content": ($content[0] | tostring) }
               ]
-            }')
+            }' > /tmp/openai_request.json
           RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "$REQ")
+            -d @/tmp/openai_request.json)
 
           jq -r '.choices[0].message.content' <<< "$RESP" > /tmp/review_raw.json || true
           if ! [ -s /tmp/review_raw.json ]; then
