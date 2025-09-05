@@ -26,10 +26,20 @@ jobs:
     steps:
       - name: Guard caller org
         run: |
-          if [ "${{ github.repository_owner }}" != "EcomExperts-io" ]; then
-            echo "Unauthorized caller: ${{ github.repository_owner }}"
-            exit 1
-          fi
+          ALLOWED_ORGS=("EcomExperts-io" "mountain-house-shopify" "mindbodygreen")
+          CALLER_ORG="${{ github.repository_owner }}"
+          
+          # Check if caller org is in allowed list
+          for org in "${ALLOWED_ORGS[@]}"; do
+            if [ "$CALLER_ORG" = "$org" ]; then
+              echo "Access granted for: $CALLER_ORG"
+              exit 0
+            fi
+          done
+          
+          echo "Unauthorized caller: $CALLER_ORG"
+          echo "Allowed organizations: ${ALLOWED_ORGS[*]}"
+          exit 1
 
       - name: Checkout caller repo
         uses: actions/checkout@v4
