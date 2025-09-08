@@ -139,16 +139,43 @@ jobs:
           echo "Rule names:"
           jq -r '.[]' /tmp/rules_index.json | head -50
 
-      - name: Build numbered files bundle from latest commit only
+      - name: Build diff content for changed files only
         if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
+          SHA="${GITHUB_SHA}"
           jq -n '{files:[]}' > /tmp/files.json
+          
           while IFS=$'\t' read -r status path; do
             case "$path" in
               *.liquid|*.js|*.css)
                 if [ -f "$path" ]; then
-                  NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
+                  echo "Processing $status file: $path"
+                  
+                  # Get the actual diff for this file (with context lines for better understanding)
+                  if [ "$status" = "A" ]; then
+                    # New file - show entire content but mark as new
+                    DIFF_CONTENT="=== NEW FILE: $path ===\n$(cat "$path" | nl -ba -w1 -s': ')"
+                  elif [ "$status" = "D" ]; then
+                    # Deleted file - skip review (no point reviewing deleted code)
+                    echo "Skipping deleted file: $path"
+                    continue
+                  else
+                    # Modified file - show only the diff with context, but filter out deleted lines
+                    RAW_DIFF=$(git show --no-merges --format="" "$SHA" -- "$path" 2>/dev/null || echo "Error getting diff for $path")
+                    if [ "$RAW_DIFF" = "Error getting diff for $path" ]; then
+                      echo "Warning: Could not get diff for $path, using full file content"
+                      DIFF_CONTENT="=== FULL FILE (diff unavailable): $path ===\n$(cat "$path" | nl -ba -w1 -s': ')"
+                    else
+                      # Filter the diff to show only added lines (+) and context lines, remove deleted lines (-)
+                      # Keep diff headers (@@) and context lines, but remove lines starting with - (deleted)
+                      FILTERED_DIFF=$(echo "$RAW_DIFF" | grep -v "^-[^-]" || echo "$RAW_DIFF")
+                      DIFF_CONTENT="=== CHANGES IN: $path ===\n$FILTERED_DIFF"
+                    fi
+                  fi
+                  
+                  # Escape for JSON
+                  ESCAPED_DIFF=$(echo "$DIFF_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
                   
                   # Determine applicable rules for this file
                   APPLICABLE_RULES=$(jq -c --arg filepath "$path" '
@@ -161,18 +188,20 @@ jobs:
                     )) | map(.name | sub("\\.mdc$"; ""))
                   ' /tmp/rules.json)
                   
-                  jq --arg p "$path" --arg n "$NUMBERED" --argjson rules "$APPLICABLE_RULES" \
-                     '.files += [{"path":$p,"numbered":$n,"applicable_rules":$rules}]' \
+                  jq --arg p "$path" --arg d "$ESCAPED_DIFF" --arg s "$status" --argjson rules "$APPLICABLE_RULES" \
+                     '.files += [{"path":$p,"diff_content":$d,"status":$s,"applicable_rules":$rules}]' \
                      /tmp/files.json > /tmp/files.tmp && mv /tmp/files.tmp /tmp/files.json
                 fi
               ;;
             esac
           done < /tmp/changed.txt
 
-          echo "Changed files captured:"
+          echo "Changed files with diffs captured:"
           jq '.files | length as $n | "count=\($n)"' /tmp/files.json
+          echo "Files being reviewed:"
+          jq -r '.files[] | "- \(.path) (\(.status))"' /tmp/files.json
 
-      - name: Build AI input (rules only, no diff)
+      - name: Build AI input (rules and diffs)
         if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
@@ -199,7 +228,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are a comprehensive code reviewer that evaluates files against coding standards. For each file, check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for ALL violations of the provided rules - be thorough and comprehensive. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., \"rules-of-enagagment\" not \"rules-of-enagagment.mdc\"), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from files[].numbered. Be detailed in your analysis - check for multiple violations per rule and multiple rules per file. Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
+                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE ADDITIONS made in a commit against coding standards. CRITICAL: You will receive git diffs that show added lines (starting with +) and context. NEVER flag issues in deleted/removed code (lines that were removed are good - they fix problems). Focus EXCLUSIVELY on newly added lines (+ prefix in diffs) and completely IGNORE any removed code. For new files, review all content. For modified files, only review lines starting with + (additions). Check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for violations ONLY in newly added code. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@). REMEMBER: Only flag issues in ADDED code (+), never in removed code (-). Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
                 },
                 { "role":"user", "content": ($content[0] | tostring) }
               ]
@@ -274,7 +303,7 @@ jobs:
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare Slack message
+      - name: Prepare Slack messages
         if: steps.bot_check.outputs.skip != 'true'
         id: prep
         run: |
@@ -288,13 +317,7 @@ jobs:
           GRADE="${{ steps.score.outputs.grade }}"
           COUNT="${{ steps.score.outputs.count }}"
 
-          ISSUES=$(jq -r '
-            (.overall.key_issues // [])
-            | to_entries
-            | map("\(.key + 1). \(.value.rule_id): \(.value.reason) `\(.value.path)` - `(Line \(.value.line))`")
-            | join("\n\n")
-          ' /tmp/review.json)
-
+          # Main message (summary only)
           {
             echo "*Commit Review Report*"
             echo ""
@@ -303,19 +326,44 @@ jobs:
             echo "*Grade:* $GRADE"
             echo ""
             if [ "$COUNT" -gt 0 ]; then
-              echo "*Issues Found ($COUNT):*"
-              echo ""
-              echo "$ISSUES"
+              echo "*Issues Found:* $COUNT (details in thread)"
             else
               echo "*No issues found!* All code follows the established rules."
             fi
-          } > /tmp/slack.txt
+          } > /tmp/slack_main.txt
 
-          echo "Slack message preview:"
-          cat /tmp/slack.txt
+          # Thread reply with detailed issues (only if there are issues)
+          if [ "$COUNT" -gt 0 ]; then
+            ISSUES=$(jq -r '
+              (.overall.key_issues // [])
+              | to_entries
+              | map("\(.key + 1). *\(.value.rule_id):* \(.value.reason) — `\(.value.path)` - `Line \(.value.line)`")
+              | join("\n\n")
+            ' /tmp/review.json)
+            
+            {
+              echo "*Detailed Issues:*"
+              echo ""
+              echo "$ISSUES"
+            } > /tmp/slack_thread.txt
+            
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Post to Slack
+          echo "Main Slack message preview:"
+          cat /tmp/slack_main.txt
+          
+          if [ "$COUNT" -gt 0 ]; then
+            echo ""
+            echo "Thread reply preview:"
+            cat /tmp/slack_thread.txt
+          fi
+
+      - name: Post main message to Slack
         if: success() && steps.bot_check.outputs.skip != 'true'
+        id: slack_main
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
@@ -326,18 +374,55 @@ jobs:
             exit 1
           fi
 
-          # Post message
+          # Post main message
           RESP="$(curl -sS -X POST \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
-            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack.txt)" '{channel: $channel, text: $text}')" \
+            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack_main.txt)" '{channel: $channel, text: $text}')" \
             https://slack.com/api/chat.postMessage)"
 
-          echo "$RESP" > /tmp/slack_resp.json
+          echo "$RESP" > /tmp/slack_main_resp.json
 
           # Validate Slack response
-          if ! jq -e '.ok == true' /tmp/slack_resp.json >/dev/null; then
+          if ! jq -e '.ok == true' /tmp/slack_main_resp.json >/dev/null; then
             echo "Slack API error:"
-            cat /tmp/slack_resp.json
+            cat /tmp/slack_main_resp.json
             exit 1
           fi
+
+          # Extract timestamp for threading
+          TIMESTAMP=$(jq -r '.ts' /tmp/slack_main_resp.json)
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+          echo "Main message posted with timestamp: $TIMESTAMP"
+
+      - name: Post detailed issues as thread reply
+        if: success() && steps.bot_check.outputs.skip != 'true' && steps.prep.outputs.has_issues == 'true'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: |
+          set -euo pipefail
+          TIMESTAMP="${{ steps.slack_main.outputs.timestamp }}"
+          
+          if [ -z "$TIMESTAMP" ]; then
+            echo "No timestamp available for threading"
+            exit 1
+          fi
+
+          # Post thread reply with detailed issues
+          RESP="$(curl -sS -X POST \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/json; charset=utf-8" \
+            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack_thread.txt)" --arg thread_ts "$TIMESTAMP" '{channel: $channel, text: $text, thread_ts: $thread_ts}')" \
+            https://slack.com/api/chat.postMessage)"
+
+          echo "$RESP" > /tmp/slack_thread_resp.json
+
+          # Validate Slack response
+          if ! jq -e '.ok == true' /tmp/slack_thread_resp.json >/dev/null; then
+            echo "Slack thread reply API error:"
+            cat /tmp/slack_thread_resp.json
+            exit 1
+          fi
+
+          echo "Thread reply posted successfully"
