@@ -24,6 +24,15 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
+      - name: Skip if Shopify bot commit
+        run: |
+          ACTOR="${{ github.actor }}"
+          if [ "$ACTOR" = "shopify[bot]" ]; then
+            echo "Skipping review for Shopify bot commit by: $ACTOR"
+            exit 78  # neutral exit code to skip remaining steps
+          fi
+          echo "Proceeding with review for commit by: $ACTOR"
+
       - name: Guard caller org
         run: |
           ALLOWED_ORGS=("EcomExperts-io" "mountain-house-shopify" "mindbodygreen")
@@ -172,7 +181,7 @@ jobs:
           jq -c -n \
             --slurpfile content /tmp/ai_input.json \
             '{
-              model:"gpt-4o",
+              model:"gpt-5",
               response_format:{type:"json_object"},
               temperature:0,
               messages:[
