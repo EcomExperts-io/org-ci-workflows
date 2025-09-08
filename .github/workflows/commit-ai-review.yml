@@ -24,16 +24,20 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
-      - name: Skip if Shopify bot commit
+      - name: Check if Shopify bot commit
+        id: bot_check
         run: |
           ACTOR="${{ github.actor }}"
           if [ "$ACTOR" = "shopify[bot]" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Skipping review for Shopify bot commit by: $ACTOR"
-            exit 78  # neutral exit code to skip remaining steps
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Proceeding with review for commit by: $ACTOR"
           fi
-          echo "Proceeding with review for commit by: $ACTOR"
 
       - name: Guard caller org
+        if: steps.bot_check.outputs.skip != 'true'
         run: |
           ALLOWED_ORGS=("EcomExperts-io" "mountain-house-shopify" "mindbodygreen")
           CALLER_ORG="${{ github.repository_owner }}"
@@ -51,16 +55,19 @@ jobs:
           exit 1
 
       - name: Checkout caller repo
+        if: steps.bot_check.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install jq
+        if: steps.bot_check.outputs.skip != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
       - name: Gather commit data
+        if: steps.bot_check.outputs.skip != 'true'
         id: info
         run: |
           set -e
@@ -74,6 +81,7 @@ jobs:
           git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
 
       - name: Checkout central rules repo
+        if: steps.bot_check.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
           repository: EcomExperts-io/org-ci-workflows
@@ -82,6 +90,7 @@ jobs:
           fetch-depth: 1
 
       - name: Load rules from .cursor/rules
+        if: steps.bot_check.outputs.skip != 'true'
         id: rules
         run: |
           set -e
@@ -131,6 +140,7 @@ jobs:
           jq -r '.[]' /tmp/rules_index.json | head -50
 
       - name: Build numbered files bundle from latest commit only
+        if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
           jq -n '{files:[]}' > /tmp/files.json
@@ -163,6 +173,7 @@ jobs:
           jq '.files | length as $n | "count=\($n)"' /tmp/files.json
 
       - name: Build AI input (rules only, no diff)
+        if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
           RULES=$(cat /tmp/rules.json)
@@ -173,6 +184,7 @@ jobs:
           echo "files.json bytes: $(wc -c < /tmp/files.json)"
 
       - name: Call OpenAI strictly by rules
+        if: steps.bot_check.outputs.skip != 'true'
         id: ai
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -233,6 +245,7 @@ jobs:
           cat /tmp/review.json
 
       - name: Validate issues have real rule_id, path, line
+        if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
           jq -e '
@@ -249,6 +262,7 @@ jobs:
           }
 
       - name: Compute grade locally
+        if: steps.bot_check.outputs.skip != 'true'
         id: score
         run: |
           set -e
@@ -261,6 +275,7 @@ jobs:
           echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
 
       - name: Prepare Slack message
+        if: steps.bot_check.outputs.skip != 'true'
         id: prep
         run: |
           set -e
@@ -300,7 +315,7 @@ jobs:
           cat /tmp/slack.txt
 
       - name: Post to Slack
-        if: success()
+        if: success() && steps.bot_check.outputs.skip != 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
