@@ -139,16 +139,40 @@ jobs:
           echo "Rule names:"
           jq -r '.[]' /tmp/rules_index.json | head -50
 
-      - name: Build numbered files bundle from latest commit only
+      - name: Build diff content for changed files only
         if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
+          SHA="${GITHUB_SHA}"
           jq -n '{files:[]}' > /tmp/files.json
+          
           while IFS=$'\t' read -r status path; do
             case "$path" in
               *.liquid|*.js|*.css)
                 if [ -f "$path" ]; then
-                  NUMBERED=$(nl -ba -w1 -s': ' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
+                  echo "Processing $status file: $path"
+                  
+                  # Get the actual diff for this file (with context lines for better understanding)
+                  if [ "$status" = "A" ]; then
+                    # New file - show entire content but mark as new
+                    DIFF_CONTENT="=== NEW FILE: $path ===\n$(cat "$path" | nl -ba -w1 -s': ')"
+                  elif [ "$status" = "D" ]; then
+                    # Deleted file - skip review (no point reviewing deleted code)
+                    echo "Skipping deleted file: $path"
+                    continue
+                  else
+                    # Modified file - show only the diff with context
+                    DIFF_CONTENT=$(git show --no-merges --format="" "$SHA" -- "$path" 2>/dev/null || echo "Error getting diff for $path")
+                    if [ "$DIFF_CONTENT" = "Error getting diff for $path" ]; then
+                      echo "Warning: Could not get diff for $path, using full file content"
+                      DIFF_CONTENT="=== FULL FILE (diff unavailable): $path ===\n$(cat "$path" | nl -ba -w1 -s': ')"
+                    else
+                      DIFF_CONTENT="=== CHANGES IN: $path ===\n$DIFF_CONTENT"
+                    fi
+                  fi
+                  
+                  # Escape for JSON
+                  ESCAPED_DIFF=$(echo "$DIFF_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n",$0}')
                   
                   # Determine applicable rules for this file
                   APPLICABLE_RULES=$(jq -c --arg filepath "$path" '
@@ -161,18 +185,20 @@ jobs:
                     )) | map(.name | sub("\\.mdc$"; ""))
                   ' /tmp/rules.json)
                   
-                  jq --arg p "$path" --arg n "$NUMBERED" --argjson rules "$APPLICABLE_RULES" \
-                     '.files += [{"path":$p,"numbered":$n,"applicable_rules":$rules}]' \
+                  jq --arg p "$path" --arg d "$ESCAPED_DIFF" --arg s "$status" --argjson rules "$APPLICABLE_RULES" \
+                     '.files += [{"path":$p,"diff_content":$d,"status":$s,"applicable_rules":$rules}]' \
                      /tmp/files.json > /tmp/files.tmp && mv /tmp/files.tmp /tmp/files.json
                 fi
               ;;
             esac
           done < /tmp/changed.txt
 
-          echo "Changed files captured:"
+          echo "Changed files with diffs captured:"
           jq '.files | length as $n | "count=\($n)"' /tmp/files.json
+          echo "Files being reviewed:"
+          jq -r '.files[] | "- \(.path) (\(.status))"' /tmp/files.json
 
-      - name: Build AI input (rules only, no diff)
+      - name: Build AI input (rules and diffs)
         if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
@@ -199,7 +225,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are a comprehensive code reviewer that evaluates files against coding standards. For each file, check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for ALL violations of the provided rules - be thorough and comprehensive. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., \"rules-of-enagagment\" not \"rules-of-enagagment.mdc\"), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from files[].numbered. Be detailed in your analysis - check for multiple violations per rule and multiple rules per file. Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
+                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE CHANGES made in a commit against coding standards. For each file, you will receive either: 1) A git diff showing only the changed lines (for modified files), 2) Full content (for new files), or 3) Nothing (for deleted files - skip these). Focus ONLY on the added/modified lines (lines starting with + in diffs). Check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for ALL violations of the provided rules in the CHANGED CODE ONLY - be thorough and comprehensive. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., \"rules-of-engagement\" not \"rules-of-engagement.mdc\"), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@). Focus on NEW or CHANGED code only, not existing code that wasn't modified. Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
                 },
                 { "role":"user", "content": ($content[0] | tostring) }
               ]
