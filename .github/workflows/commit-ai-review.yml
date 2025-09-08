@@ -274,7 +274,7 @@ jobs:
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare Slack message
+      - name: Prepare Slack messages
         if: steps.bot_check.outputs.skip != 'true'
         id: prep
         run: |
@@ -288,13 +288,7 @@ jobs:
           GRADE="${{ steps.score.outputs.grade }}"
           COUNT="${{ steps.score.outputs.count }}"
 
-          ISSUES=$(jq -r '
-            (.overall.key_issues // [])
-            | to_entries
-            | map("\(.key + 1). \(.value.rule_id): \(.value.reason) `\(.value.path)` - `(Line \(.value.line))`")
-            | join("\n\n")
-          ' /tmp/review.json)
-
+          # Main message (summary only)
           {
             echo "*Commit Review Report*"
             echo ""
@@ -303,19 +297,44 @@ jobs:
             echo "*Grade:* $GRADE"
             echo ""
             if [ "$COUNT" -gt 0 ]; then
-              echo "*Issues Found ($COUNT):*"
-              echo ""
-              echo "$ISSUES"
+              echo "*Issues Found:* $COUNT (details in thread)"
             else
               echo "*No issues found!* All code follows the established rules."
             fi
-          } > /tmp/slack.txt
+          } > /tmp/slack_main.txt
 
-          echo "Slack message preview:"
-          cat /tmp/slack.txt
+          # Thread reply with detailed issues (only if there are issues)
+          if [ "$COUNT" -gt 0 ]; then
+            ISSUES=$(jq -r '
+              (.overall.key_issues // [])
+              | to_entries
+              | map("\(.key + 1). *\(.value.rule_id):* \(.value.reason)\n   📁 `\(.value.path)` - Line \(.value.line)")
+              | join("\n\n")
+            ' /tmp/review.json)
+            
+            {
+              echo "*Detailed Issues:*"
+              echo ""
+              echo "$ISSUES"
+            } > /tmp/slack_thread.txt
+            
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Post to Slack
+          echo "Main Slack message preview:"
+          cat /tmp/slack_main.txt
+          
+          if [ "$COUNT" -gt 0 ]; then
+            echo ""
+            echo "Thread reply preview:"
+            cat /tmp/slack_thread.txt
+          fi
+
+      - name: Post main message to Slack
         if: success() && steps.bot_check.outputs.skip != 'true'
+        id: slack_main
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
@@ -326,18 +345,55 @@ jobs:
             exit 1
           fi
 
-          # Post message
+          # Post main message
           RESP="$(curl -sS -X POST \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
-            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack.txt)" '{channel: $channel, text: $text}')" \
+            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack_main.txt)" '{channel: $channel, text: $text}')" \
             https://slack.com/api/chat.postMessage)"
 
-          echo "$RESP" > /tmp/slack_resp.json
+          echo "$RESP" > /tmp/slack_main_resp.json
 
           # Validate Slack response
-          if ! jq -e '.ok == true' /tmp/slack_resp.json >/dev/null; then
+          if ! jq -e '.ok == true' /tmp/slack_main_resp.json >/dev/null; then
             echo "Slack API error:"
-            cat /tmp/slack_resp.json
+            cat /tmp/slack_main_resp.json
             exit 1
           fi
+
+          # Extract timestamp for threading
+          TIMESTAMP=$(jq -r '.ts' /tmp/slack_main_resp.json)
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+          echo "Main message posted with timestamp: $TIMESTAMP"
+
+      - name: Post detailed issues as thread reply
+        if: success() && steps.bot_check.outputs.skip != 'true' && steps.prep.outputs.has_issues == 'true'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: |
+          set -euo pipefail
+          TIMESTAMP="${{ steps.slack_main.outputs.timestamp }}"
+          
+          if [ -z "$TIMESTAMP" ]; then
+            echo "No timestamp available for threading"
+            exit 1
+          fi
+
+          # Post thread reply with detailed issues
+          RESP="$(curl -sS -X POST \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/json; charset=utf-8" \
+            --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack_thread.txt)" --arg thread_ts "$TIMESTAMP" '{channel: $channel, text: $text, thread_ts: $thread_ts}')" \
+            https://slack.com/api/chat.postMessage)"
+
+          echo "$RESP" > /tmp/slack_thread_resp.json
+
+          # Validate Slack response
+          if ! jq -e '.ok == true' /tmp/slack_thread_resp.json >/dev/null; then
+            echo "Slack thread reply API error:"
+            cat /tmp/slack_thread_resp.json
+            exit 1
+          fi
+
+          echo "Thread reply posted successfully"
