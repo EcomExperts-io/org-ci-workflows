@@ -193,7 +193,7 @@ jobs:
           jq -c -n \
             --slurpfile content /tmp/ai_input.json \
             '{
-              model:"gpt-5",
+              model:"gpt-4o",
               response_format:{type:"json_object"},
               temperature:0,
               messages:[
