@@ -161,13 +161,16 @@ jobs:
                     echo "Skipping deleted file: $path"
                     continue
                   else
-                    # Modified file - show only the diff with context
-                    DIFF_CONTENT=$(git show --no-merges --format="" "$SHA" -- "$path" 2>/dev/null || echo "Error getting diff for $path")
-                    if [ "$DIFF_CONTENT" = "Error getting diff for $path" ]; then
+                    # Modified file - show only the diff with context, but filter out deleted lines
+                    RAW_DIFF=$(git show --no-merges --format="" "$SHA" -- "$path" 2>/dev/null || echo "Error getting diff for $path")
+                    if [ "$RAW_DIFF" = "Error getting diff for $path" ]; then
                       echo "Warning: Could not get diff for $path, using full file content"
                       DIFF_CONTENT="=== FULL FILE (diff unavailable): $path ===\n$(cat "$path" | nl -ba -w1 -s': ')"
                     else
-                      DIFF_CONTENT="=== CHANGES IN: $path ===\n$DIFF_CONTENT"
+                      # Filter the diff to show only added lines (+) and context lines, remove deleted lines (-)
+                      # Keep diff headers (@@) and context lines, but remove lines starting with - (deleted)
+                      FILTERED_DIFF=$(echo "$RAW_DIFF" | grep -v "^-[^-]" || echo "$RAW_DIFF")
+                      DIFF_CONTENT="=== CHANGES IN: $path ===\n$FILTERED_DIFF"
                     fi
                   fi
                   
@@ -225,7 +228,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE CHANGES made in a commit against coding standards. For each file, you will receive either: 1) A git diff showing only the changed lines (for modified files), 2) Full content (for new files), or 3) Nothing (for deleted files - skip these). Focus ONLY on the added/modified lines (lines starting with + in diffs). Check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for ALL violations of the provided rules in the CHANGED CODE ONLY - be thorough and comprehensive. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@). Focus on NEW or CHANGED code only, not existing code that wasn\u0027t modified. Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
+                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE ADDITIONS made in a commit against coding standards. CRITICAL: You will receive git diffs that show added lines (starting with +) and context. NEVER flag issues in deleted/removed code (lines that were removed are good - they fix problems). Focus EXCLUSIVELY on newly added lines (+ prefix in diffs) and completely IGNORE any removed code. For new files, review all content. For modified files, only review lines starting with + (additions). Check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for violations ONLY in newly added code. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@). REMEMBER: Only flag issues in ADDED code (+), never in removed code (-). Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
                 },
                 { "role":"user", "content": ($content[0] | tostring) }
               ]
