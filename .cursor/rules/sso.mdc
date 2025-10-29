@@ -1,0 +1,767 @@
+---
+description: Apply these rules when implementing Server-Side Optimization (SSO) for Shopify stores
+globs: *.liquid, *.js
+alwaysApply: false
+---
+Update this rule if user requested changes to the project requirement, etc.
+
+# Server-Side Optimization (SSO) Implementation Guide
+
+## Executive Summary
+
+Server-Side Optimization (SSO) is a comprehensive performance optimization methodology specifically designed for Shopify e-commerce stores. This systematic approach leverages strategic resource management, advanced lazy loading techniques, and intelligent bot detection to significantly improve Core Web Vitals while maintaining functional parity and visual stability. The methodology emphasizes data-driven optimization decisions, thorough performance auditing, and measurable improvements in user experience metrics.
+
+## Conceptual Foundation
+
+### Optimization Philosophy
+
+SSO operates on the fundamental principle of **selective resource deferment**. Rather than employing universal lazy loading strategies that can compromise user experience, SSO implements intelligent resource management that:
+
+- Preserves critical above-the-fold functionality during initial page load
+- Strategically delays non-essential resources by several seconds post-load
+- Maintains visual stability through critical CSS extraction and inline delivery
+- Implements vanilla JavaScript restructures for essential interactive elements
+- Provides comprehensive fallback mechanisms for enhanced reliability
+
+### Strategic Methodology
+
+**CSS Management Strategy:**
+The CSS optimization approach centers on critical resource extraction and conditional loading:
+- Extract critical above-the-fold CSS using automated tools
+- Implement template-specific CSS delivery mechanisms
+- Deploy intelligent lazy loading for non-critical stylesheets
+- Proactively address Cumulative Layout Shift (CLS) issues through careful resource management
+
+**JavaScript Optimization Framework:**
+JavaScript optimization requires sophisticated dependency analysis and strategic restructuring:
+- Conduct comprehensive dependency tree analysis for optimal loading sequences
+- Implement case-specific evaluation protocols for library dependencies (particularly jQuery ecosystems)
+- Develop vanilla JavaScript alternatives for critical first-fold interactions
+- Maintain functional equivalence during optimization transitions
+
+**Performance Decision Matrix:**
+SSO implementation requires individualized assessment based on:
+- First-fold functionality requirements and user interaction patterns
+- Complex dependency relationships and loading sequence dependencies
+- Critical user journey preservation and experience continuity
+- Performance improvement potential versus development complexity trade-offs
+
+## Comprehensive Implementation Framework
+
+### Phase 1: Infrastructure Setup and Core Snippet Implementation
+
+#### 1.1 Environment Detection and Control Logic
+
+The foundational detection system must be implemented above the `<!doctype html>` declaration:
+
+```liquid
+{% comment %}   
+  SSO Environment Detection System
+  Establishes core variables for optimization control and admin interface detection.
+{% endcomment %}  
+  
+{%- assign speedupkernel = true -%}  
+{%- assign is_admin_interface = false -%}  
+  
+{%- if speedupkernel -%}  
+  {%- if request.host contains 'myshopify.com' -%}  
+    {%- assign is_admin_interface = true -%}  
+  {%- else -%}  
+    {%- assign is_admin_interface = false -%}  
+  {%- endif -%}  
+  
+  {%- if request.host contains 'shopifypreview.com' -%}  
+    {%- assign is_admin_interface = false -%}  
+  {%- endif -%}  
+  
+  {%- if request.host contains 'gempages.net' -%}  
+    {%- assign is_admin_interface = true -%}  
+  {%- endif -%}  
+  
+  {%- if request.path contains 'cart' -%}  
+    {%- assign is_admin_interface = true -%}  
+  {%- endif -%}  
+  
+  {%- if request.path contains 'checkout' -%}  
+    {%- assign is_admin_interface = true -%}  
+  {%- endif -%}  
+  
+  {%- if request.path contains 'page' -%}  
+    {%- assign speedupkernel = false -%}    
+  {%- endif -%}  
+{%- endif -%}
+```
+
+#### 1.2 Advanced Observer and Bot Detection System (`__opt-theme-observer.liquid`)
+
+This critical snippet implements sophisticated bot detection and script management:
+
+```html
+<script>
+  class BotDetection {
+    constructor() {
+      this.allTestFunctions = ['testUserAgent', 'testChromeWindow', 'testPlugins', 'testAppVersion', 'testConnectionRtt', 'testSamsungBrowser'];
+    }
+
+    testUserAgent() {
+      if (/Headless/.test(window.navigator.userAgent)) {
+        return 1; // Headless browser detected
+      } else {
+        return 0; // Standard browser
+      }
+    }
+
+    testChromeWindow() {
+      if (eval.toString().length == 33 && !window.chrome) {
+        return 1; // Headless Chrome detected
+      } else {
+        return 0; // Standard Chrome or other browser
+      }
+    }
+
+    testNotificationPermissions(callback) {
+      if(navigator.permissions){
+        navigator.permissions.query({name:'notifications'}).then(function(permissionStatus) {
+          if(Notification.permission === 'denied' && permissionStatus.state === 'prompt') {
+            callback(1); // Inconsistent permission state - likely headless
+          } else {
+            callback(0); // Consistent permission state
+          }
+        });
+      } else {
+        callback(0); // Permissions API unavailable
+      }      
+    }
+
+    testPlugins() {
+      let length = navigator.plugins.length;
+      return length === 0 ? 1 : 0; // No plugins typically indicates headless browser
+    }
+
+    testAppVersion() {
+      let appVersion = navigator.appVersion;
+      return /headless/i.test(appVersion) ? 1 : 0;
+    }
+
+    testConnectionRtt() {
+      let connection = navigator.connection;
+      let connectionRtt = connection ? connection.rtt : undefined;
+
+      if (connectionRtt === undefined) {
+        return 0; // Connection API unavailable
+      } else {
+        return connectionRtt === 0 ? 1 : 0; // Zero RTT may indicate synthetic environment
+      }
+    }
+    
+    testSamsungBrowser() {
+      if(navigator.userAgent.match(/SamsungBrowser/i)) {
+        return 0; // Samsung Browser detected - likely genuine
+      } else {
+        return 1; // Non-Samsung browser
+      }
+    }
+
+    getBotScore() {
+      let score = 0;
+      let testsRun = 0;
+
+      this.testNotificationPermissions(function(v){
+        score += v;
+        testsRun++;
+      });
+
+      for(let i = 0; i < this.allTestFunctions.length; i++){
+        score += this[this.allTestFunctions[i]].apply();
+        testsRun++;
+      }
+
+      return score / testsRun; // Normalized bot probability score
+    }
+  }
+  
+  var botDetector = new BotDetection();
+  
+  // Android WebView Detection and Handling
+  if(navigator.userAgent.match(/wv/i)) {
+    window.botScore = 0; // WebView considered legitimate traffic
+  } else {
+    window.botScore = botDetector.getBotScore();
+  }
+</script>
+
+<script>
+  // YETT Blacklist Configuration - Customize based on store integrations
+  window.YETT_BLACKLIST = []; 
+  window.YETT_BLACKLIST.push(/bounceexchange\.com/);
+  window.YETT_BLACKLIST.push(/cdn1\.affirm\.com/);
+  window.YETT_BLACKLIST.push(/static\.klaviyo\.com/);
+  window.YETT_BLACKLIST.push(/optimonk\.com/);  
+
+  // Conditional Analytics Blocking for Bot Traffic
+  if(window.botScore && window.botScore > 0.34) {
+    console.log('Bot detected - implementing analytics blocking');
+    window.isBot = true;
+
+    window.YETT_BLACKLIST.push(/www\.googletagmanager\.com/);
+    window.YETT_BLACKLIST.push(/googleads\.g\.doubleclick\.net/);    
+    window.YETT_BLACKLIST.push(/www\.google-analytics\.com/);
+    window.YETT_BLACKLIST.push(/analytics\.tiktok\.com/);
+    window.YETT_BLACKLIST.push(/connect\.facebook\.net/);
+  }
+  
+  // YETT Library Implementation (minified version)
+  !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t="undefined"!=typeof globalThis?globalThis:t||self).yett={})}(this,(function(t){"use strict";var e="javascript/blocked",r={blacklist:window.YETT_BLACKLIST,whitelist:window.YETT_WHITELIST},n={blacklisted:[]},i=function(t,n){return t&&(!n||n!==e)&&(!r.blacklist||r.blacklist.some((function(e){return e.test(t)})))&&(!r.whitelist||r.whitelist.every((function(e){return!e.test(t)})))},o=function(t){var e=t.getAttribute("src");return r.blacklist&&r.blacklist.every((function(t){return!t.test(e)}))||r.whitelist&&r.whitelist.some((function(t){return t.test(e)}))},c=new MutationObserver((function(t){for(var r=0;r<t.length;r++)for(var o=t[r].addedNodes,c=function(t){var r=o[t];if(1===r.nodeType&&"SCRIPT"===r.tagName){var c=r.src,l=r.type;if(i(c,l)){n.blacklisted.push([r,r.type]),r.type=e;r.addEventListener("beforescriptexecute",(function t(n){r.getAttribute("type")===e&&n.preventDefault(),r.removeEventListener("beforescriptexecute",t)})),r.parentElement&&r.parentElement.removeChild(r)}}},l=0;l<o.length;l++)c(l)}));c.observe(document.documentElement,{childList:!0,subtree:!0});var l=document.createElement;document.createElement=function(){for(var t=arguments.length,r=new Array(t),n=0;n<t;n++)r[n]=arguments[n];if("script"!==r[0].toLowerCase())return l.bind(document).apply(void 0,r);var o=l.bind(document).apply(void 0,r);return o};t.unblock=function(){r.blacklist=[],r.whitelist=[];for(var t=document.querySelectorAll('script[type="'.concat(e,'"]')),i=0;i<t.length;i++){var l=t[i];o(l)&&(n.blacklisted.push([l,"application/javascript"]),l.parentElement.removeChild(l))}n.blacklisted.forEach((function(t){var e=t[0],r=t[1];if(o(e)){for(var n=document.createElement("script"),i=0;i<e.attributes.length;i++){var c=e.attributes[i];"src"!==c.name&&"type"!==c.name&&n.setAttribute(c.name,e.attributes[i].value)}n.setAttribute("src",e.src),n.setAttribute("type",r||"application/javascript"),document.head.appendChild(n)}})),c.disconnect()},Object.defineProperty(t,"__esModule",{value:!0})}));
+</script>
+
+<script>  
+  // Advanced Script Blocking Configuration System
+  let optThemeConfig = {  
+    blockAllJs: false,          
+    blockRemoteScripts: [],  
+    blockInlineScripts: [],  
+  };  
+  
+  let optNodes = [];  
+  const optObserver = new MutationObserver(mutations => {  
+    mutations.forEach(({ addedNodes }) => {  
+      addedNodes.forEach(node => {  
+        if (node.nodeType === 1 && node.tagName === 'SCRIPT') {  
+          if (optThemeConfig.blockAllJs) {  
+            optNodes.push(node);  
+            node.type = 'noscript';  
+            if (node.parentElement) {  
+              node.parentElement.removeChild(node); 
+            }  
+          } else {  
+            if (node.innerText) {  
+              if (optThemeConfig.blockInlineScripts.some(x => node.innerText.includes(x))) {  
+                optNodes.push(node);  
+                node.type = 'noscript'; 
+                if (node.parentElement) {  
+                  node.parentElement.removeChild(node); 
+                }  
+              }  
+            } else {  
+              if (optThemeConfig.blockRemoteScripts.some(x => node.src.includes(x))) {  
+                optNodes.push(node);  
+                node.type = 'noscript';  
+                if (node.parentElement) {  
+                  node.parentElement.removeChild(node);  
+                }  
+              }  
+            }  
+          }  
+        }  
+      })  
+    })  
+  })  
+  
+  optObserver.observe(document.documentElement, {  
+    childList: true,  
+    subtree: true  
+  });  
+</script>  
+
+<script type="noscript-s">  
+  setTimeout(() => {
+    optObserver.disconnect();
+    if(!window.isBot) {
+      window.yett.unblock();
+      for (let i = 0; i < optNodes.length; i++) {  
+        optNodes[i].type = 'text/javascript';
+        let script = document.createElement('script');  
+        if (optNodes[i].src){  
+          script.src = optNodes[i].src;  
+        }  
+        script.type = 'text/javascript';  
+        script.innerHTML = optNodes[i].innerHTML;  
+        document.querySelector('body').appendChild(script);
+      }
+    }
+  }, 10);
+</script>
+```
+
+#### 1.3 Content for Header Optimization (`__opt-theme-headers.liquid`)
+
+```liquid
+{%- if speedupkernel -%}  
+    {%- unless is_admin_interface -%}  
+    {%- capture __content_for_header -%}  
+      {{ content_for_header }}  
+    {%- endcapture -%}  
+    {%- assign __content_for_header = __content_for_header  
+      | replace: "window.addEventListener('load', asyncLoad, false);", "window.addEventListener('wnw_load_custom', asyncLoad, false);"  
+      | replace: 'class="analytics"', 'class="analytics" type="noscript-s"'  
+      | replace: 'defer="defer" src="', 'type="noscript-s" data-src="'  
+      | replace: "debugger; previewBarInjector.init();", "previewBarInjector.init();"  
+      | replace: 'DOMContentLoaded', 'allLoad'  
+    -%}  
+    {%- assign content_for_header = __content_for_header -%}  
+  {%- endunless -%}  
+{%- endif -%}  
+  
+<script>  
+  window.addEventListener('wnw_load', function (e) {  
+    setTimeout(() => {  
+      var evt = document.createEvent('Event');  
+      evt.initEvent('wnw_load_custom', false, false);  
+      window.dispatchEvent(evt);  
+    }, 2000);  
+    setTimeout(() => {  
+      window.emitEvent = function (e, n, t) { 
+        if (e) { 
+          n = n || window; 
+          t = t || {}; 
+          var a = new CustomEvent(e, { bubbles: true, cancelable: true, detail: t }); 
+          n.dispatchEvent(a); 
+        } 
+      };  
+      setTimeout(() => { emitEvent("allLoad", window, {}); }, 10);  
+      setTimeout(() => { emitEvent("allLoad", document, {}); }, 10);  
+    }, 100);  
+  });  
+</script>
+```
+
+#### 1.4 Comprehensive Lazy Loading Engine (`__opt-theme-js.liquid`)
+
+```html
+<script>  
+(function () {  
+  var windowWidth, loaded = false, lazyLoadByPx = 200;  
+  
+  function init() {  
+    if (!loaded) {  
+      loaded = true;  
+      lazyLoadImg();  
+      lazyLoadBackground();  
+      lazyLoadCss();  
+      lazyLoadScripts();  
+    }  
+  }  
+  
+  function insertAfter(newNode, referenceNode) {  
+    try {  
+      referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);  
+    } catch (error) {  
+      console.error('Element insertion failed:', error);  
+    }  
+  }  
+  
+  function lazyLoadImg() {  
+    let images = document.querySelectorAll("img.opt_lazy");  
+    let windowHeight = window.innerHeight;  
+  
+    for (let i = 0; i < images.length; i++) {  
+      let rect = images[i].getBoundingClientRect();  
+      if (rect.top !== 0 && rect.top - windowHeight < lazyLoadByPx) {  
+        let src = windowWidth < 600  
+          ? (images[i].dataset.mobsrc === undefined ? images[i].getAttribute("data-src")  
+            : images[i].dataset.mobsrc) : images[i].dataset.src === undefined ? images[i].getAttribute("data-src") : images[i].dataset.src;  
+  
+        let srcset = images[i].getAttribute("data-srcset");  
+  
+        if (src !== null && src !== "") {  
+          images[i].src = src;  
+        }  
+        if (srcset !== null && srcset !== "") {  
+          images[i].srcset = srcset;  
+        }  
+        images[i].classList.remove("opt_lazy");  
+      }  
+    }  
+  }  
+  
+  function lazyLoadBackground() {  
+    let lazyBackgrounds = document.querySelectorAll(".opt_bg_lazy");  
+    lazyBackgrounds.forEach(function (element) {  
+      let lazybg = windowWidth < 600  
+        ? (element.dataset.mobstyle === undefined ? element.dataset.bg : element.dataset.mobstyle)  
+        : element.dataset.bg === undefined ? element.dataset.bg : element.dataset.bg;  
+  
+      if (lazybg !== null && lazybg !== "") {  
+        element.style.backgroundImage = lazybg;  
+      }  
+      element.classList.remove("opt_bg_lazy");  
+    });  
+  }  
+  
+  function lazyLoadCss() {  
+    let links = document.querySelectorAll("link[data-href]");  
+    for (let i = 0; i < links.length; i++) {  
+      let newLink = document.createElement("link");  
+      newLink.href = links[i].getAttribute("data-href");  
+      newLink.rel = "stylesheet";  
+      delete links[i].dataset.href;  
+      links[i].parentNode.insertBefore(newLink, links[i]);  
+      links[i].parentNode.removeChild(links[i]);  
+    }  
+  }  
+  
+  function loadRemoteScript(scriptElement) {  
+    let newScript = document.createElement("script");  
+    if (scriptElement.attributes !== undefined) {  
+      for (let i = 0, attribute; i < scriptElement.attributes.length; i++) {  
+        attribute = scriptElement.attributes[i];  
+        if (attribute.name !== "type" && attribute.nodeName !== "data-src") {  
+          newScript.setAttribute(attribute.name, attribute.value);  
+        }  
+      }  
+    }  
+    newScript.src = scriptElement.getAttribute("data-src");  
+    insertAfter(newScript, scriptElement);  
+    delete scriptElement.dataset.src;  
+    delete scriptElement.type;  
+    scriptElement.parentNode.removeChild(scriptElement);  
+    return newScript;  
+  }  
+  
+  function loadInlineScript(scriptElement) {  
+    let newScript = document.createElement("script");  
+    for (let i = 0; i < scriptElement.attributes.length; i++) {  
+      let attribute = scriptElement.attributes[i];  
+      if (attribute.name !== "type") {  
+        newScript.setAttribute(attribute.name, attribute.value);  
+      }  
+    }  
+    newScript.innerHTML = scriptElement.innerHTML;  
+    insertAfter(newScript, scriptElement);  
+    scriptElement.parentNode.removeChild(scriptElement);  
+  }  
+  
+  function lazyLoadScripts() {  
+    let scripts = document.querySelectorAll("script[type=noscript-s]");  
+    if (scripts.length < 1) {  
+      setTimeout(() => {  
+        let event = new Event("wnw_load");  
+        window.dispatchEvent(event);  
+      }, 200);  
+      return;  
+    }  
+    if (scripts[0].getAttribute("data-src") !== null) {  
+      let loadedScript = loadRemoteScript(scripts[0]);  
+      loadedScript.onload = function () {  
+        lazyLoadScripts();  
+      };  
+      loadedScript.onerror = function () {  
+        lazyLoadScripts();  
+      };  
+    } else {  
+      loadInlineScript(scripts[0]);  
+      lazyLoadScripts();  
+    }  
+  }  
+  
+  if(!window.isBot){
+    document.addEventListener("DOMContentLoaded", function () {  
+      windowWidth = screen.width;  
+      window.addEventListener("scroll", function () {  
+        lazyLoadImg();  
+        init();  
+      });  
+      window.addEventListener("mousemove", function () {  
+        lazyLoadImg();  
+        init();  
+      });  
+      window.addEventListener("touchstart", function () {  
+        lazyLoadImg();  
+        init();  
+      });  
+    });  
+    
+    window.addEventListener('load', function () {  
+      setTimeout(() => {  
+        init();  
+      }, 6000);  
+    });
+  }  
+})();  
+</script>
+```
+
+#### 1.5 Implementation Placement
+
+```liquid
+<!-- Just after <head> opening tag -->
+{% unless is_admin_interface %}  
+  {% render '__opt-theme-observer' %}  
+{% endunless %}  
+{% include '__opt-theme-headers' %}
+
+<!-- Just before closing </body> tag -->
+{% render '__opt-theme-js' %}
+```
+
+### Phase 2: JavaScript Lazy Loading Implementation
+
+#### 2.1 Source File Optimization
+
+Transform JavaScript files by changing attributes:
+- `type="text/javascript"` → `type="noscript-s"`
+- `src="..."` → `data-src="..."`
+
+**External Script Example:**
+```liquid
+<!-- Before -->
+<script src="{{ 'shipping-note-script.js' | asset_url }}" type="text/javascript"></script>
+
+<!-- After -->
+{% if template contains 'index' or template contains 'product' or template contains 'collection' %}
+  <script type="noscript-s" data-src="{{ 'shipping-note-script.js' | asset_url }}"></script>
+{% else %}
+  <script src="{{ 'shipping-note-script.js' | asset_url }}" type="text/javascript"></script>
+{% endif %}
+```
+
+**Inline Script Example:**
+```liquid
+<!-- Before -->
+<script>  
+  $( document ).ready(function() {
+    if(isBrave()){
+      var braveImgShow = "{{ img_url }}";  
+      $('.rimage-outer-wrapper .rimage-wrapper img').attr('src',braveImgShow);  
+    }   
+  });
+</script>
+
+<!-- After -->
+<script {% if template contains 'index' or template contains 'product' or template contains 'collection' %}type="noscript-s"{% endif %}>  
+  $( document ).ready(function() {
+    if(isBrave()){
+      var braveImgShow = "{{ img_url }}";  
+      $('.rimage-outer-wrapper .rimage-wrapper img').attr('src',braveImgShow);  
+    }   
+  });
+</script>
+```
+
+#### 2.2 Non-Source File Management
+
+Use configuration object in `__opt-theme-observer.liquid`:
+```javascript
+let optThemeConfig = {
+  blockAllJs: false,        
+  blockRemoteScripts: ['smile', 'judge.me'],
+  blockInlineScripts: ['window.BOOMR', 'ShopifyAnalytics']
+};
+```
+
+### Phase 3: App Lazy Loading
+
+**Three Categories:**
+1. **Content_for_header Apps**: Automatically handled by `__opt-theme-headers.liquid`
+2. **Customizer App Blocks**: Deactivate → manually add to theme.liquid → apply lazy loading
+3. **Theme.liquid Apps**: Apply lazy loading directly
+
+### Phase 4: Issue Resolution & Restructure Tasks
+
+#### Testing Protocol:
+- Open live theme and SSO branch in separate tabs
+- Compare console errors (should be identical)
+- Test critical functionality (mega menu, cart drawer)
+
+#### Restructure Example:
+```html
+<script class="restructure">
+document.addEventListener('DOMContentLoaded', function() {
+  const menuToggle = document.querySelector('.mobile-menu-toggle');
+  const menu = document.querySelector('.mobile-menu');
+  
+  if (menuToggle && menu) {
+    menuToggle.addEventListener('click', function() {
+      menu.classList.toggle('open');
+    });
+  }
+});
+</script>
+```
+
+### Phase 5: Critical CSS & Lazy Loading
+
+#### CSS Extraction:
+1. Use Chrome extension "CSS Used"
+2. Create snippets: `__index-css.liquid`, `__collection-css.liquid`, `__product-css.liquid`
+3. Place extracted CSS in inline `<style>` tags
+
+#### CSS Lazy Loading:
+```liquid
+{% if template contains 'index' %}
+  {% render '__index-css' %}
+  <link rel="stylesheet" data-href="{{ 'theme.css' | asset_url }}">
+{% elsif template contains 'collection' %}
+  {% render '__collection-css' %}
+  <link rel="stylesheet" data-href="{{ 'theme.css' | asset_url }}">
+{% else %}
+  <link rel="stylesheet" href="{{ 'theme.css' | asset_url }}">
+{% endif %}
+```
+
+### Phase 6: Homepage LCP Optimization (CRITICAL)
+
+**This is make-or-break for SSO success.**
+
+#### Common LCP Elements:
+- **Slider**: Don't lazy-load slider JS OR rebuild in vanilla JS
+- **Hero Image**: Remove lazy-load attributes, add `fetchpriority="high"`
+- **Video**: Use `poster` attribute
+
+Example:
+```liquid
+<video poster="{{ section.settings.poster | image_url }}">
+    <source src="{{ section.settings.video_desktop }}" type='video/mp4' priority="high">
+</video>
+```
+
+### Phase 7: Image Preloading
+
+#### Shopify Native:
+```liquid
+{{ product | image_url: width: 200 | image_tag: preload: true }}
+```
+
+#### Manual:
+```html
+<link rel="preload" href="image.jpg" as="image" />
+```
+
+### Phase 8: Image Lazy Loading
+
+```html
+<!-- Before -->
+<img src="..." alt="Product">
+
+<!-- After -->
+<img class="opt_lazy" data-src="..." alt="Product">
+```
+
+**Critical Rule:** Never lazy-load above-the-fold images.
+
+### Phase 9: SSO Report Generation
+
+#### Python Script (`generate_sso_report.py`):
+```python
+import os
+import re
+
+rootDir = r'C:\Path\To\Your\Project'
+
+# Regex patterns
+pattern = re.compile(r'<script[^>]*type="noscript-s"[^>]*>', re.IGNORECASE)
+css_pattern = re.compile(r'<link[^>]*data-href[^>]*>', re.IGNORECASE)
+img_pattern = re.compile(r'<img[^>]*class="opt_lazy"[^>]*>', re.IGNORECASE)
+restructure_pattern = re.compile(r'<script[^>]*class="restructure"[^>]*>', re.IGNORECASE)
+
+matches = []
+css_matches = []
+img_matches = []
+restructure_matches = []
+
+# Process files
+for dirName, subdirList, fileList in os.walk(rootDir):
+    for fname in fileList:
+        if fname.endswith('.liquid'):
+            full_path = os.path.join(dirName, fname)
+            with open(full_path, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+                for line_no, line in enumerate(lines, 0):
+                    if pattern.search(line):
+                        # Handle script matches
+                        pass
+                    # Handle other patterns...
+
+# Generate report
+with open('SSO_Report.md', 'w') as f:
+    f.write("# SSO Implementation Report\n\n")
+    # Write all matches...
+```
+
+**Usage:** `python generate_sso_report.py`
+
+## Bot Detection Guidelines
+
+### ❌ CRITICAL: DON'T USE BOT DETECTION DURING DEVELOPMENT
+### ❌ DON'T USE BOT DETECTION DURING DEVELOPMENT  
+### ❌ DON'T USE BOT DETECTION DURING DEVELOPMENT
+
+**Why:** Blocks all pixels/analytics, giving false performance improvements and masking real issues.
+
+**When to Enable:** Only AFTER project completion and QI approval.
+
+## Core Web Vitals Targets
+
+### Metrics:
+- **LCP**: ≤2.5s (good), ≤4s (needs improvement), >4s (poor)
+- **FID**: ≤100ms (good), ≤300ms (needs improvement), >300ms (poor)
+- **CLS**: ≤0.1 (good), ≤0.25 (needs improvement), >0.25 (poor)
+
+### INP (Interaction to Next Paint)
+Replacing FID in March 2024. Monitor using:
+```html
+<script type="module">
+  import {getINP} from 'https://unpkg.com/web-vitals?module';
+  getINP(console.log);
+</script>
+```
+
+## Required Browser Extensions
+
+### Performance:
+- CSS Used (critical CSS extraction)
+- Web Vitals Extension
+- Responsive Image Linter
+
+### Pixel Verification:
+- Meta Pixel Helper
+- TikTok Pixel Helper
+- Twitter Pixel Helper
+- Tag Assistant Legacy
+
+## Audit Methodology
+
+### Backend Analysis:
+- **Theme Version**: Check Shopify 2.0 (JSON templates)
+- **Template Count**: Product/collection templates
+- **Theme Structure**: Development planning
+
+### Frontend Analysis:
+- **Native vs App**: Cart drawer, search, filters
+- **Control Assessment**: Apps limit optimization potential
+
+### Audit Format:
+```
+Store Name: [Name]
+Theme: [Theme] v[X.X.X] (2.0: Yes/No)
+Templates: [X] PDP, [X] Collection
+Trackers: [Screenshot]
+
+Homepage: Desktop XX/100, Mobile XX/100
+Collection: Desktop XX/100, Mobile XX/100  
+Product: Desktop XX/100, Mobile XX/100
+```
+
+## Best Practices
+
+### Development Workflow:
+1. Add SSO snippets
+2. Analyze JS dependencies
+3. Extract critical CSS
+4. Optimize LCP
+5. Test functionality
+6. Implement restructures
+7. Lazy load images
+8. Generate report
+9. Enable bot detection (post-completion)
+
+### Testing Checklist:
+- [ ] LCP loads immediately
+- [ ] Mobile menu works on load
+- [ ] Cart drawer functions
+- [ ] Pixels fire after delay
+- [ ] No new console errors
+- [ ] CLS under 0.1
+- [ ] Restructure scripts have `class="restructure"`
+
+This comprehensive guide provides the framework for implementing high-performance SSO while maintaining functionality and user experience.

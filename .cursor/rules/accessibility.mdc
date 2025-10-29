@@ -1,0 +1,1963 @@
+---
+description: Shopify accessibility standards for WCAG 2.1 AA compliance and ADA adherence
+globs: *.liquid, *.js, *.css
+alwaysApply: false
+---
+
+# Shopify Accessibility Implementation Guide
+
+Apply these accessibility standards when developing or auditing Shopify stores to ensure WCAG 2.1 AA compliance and ADA adherence.
+
+## Core Accessibility Requirements
+
+### Image Accessibility
+Always provide meaningful alt text for images that convey information, empty alt text for decorative images.
+
+**Demo Pattern:**
+```
+Line 12: <img src="..." alt="{{ product.featured_image.alt | default: product.title }}">
+Line 15: <img src="..." alt="" role="presentation"> <!-- decorative -->
+Line 18: <img src="..." alt="{{ shop.name }} logo">
+```
+
+**Check in:** `sections/product-*.liquid`, `snippets/product-card.liquid`, `sections/hero-banner.liquid`
+
+### Keyboard Navigation
+Ensure all interactive elements are keyboard accessible with visible focus indicators.
+
+**Demo Pattern:**
+```
+Line 34: *:focus-visible { outline: 2px solid #0066cc; outline-offset: 2px; }
+Line 41: button:focus-visible { box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3); }
+```
+
+**Requirements:** Tab order follows logical flow, all interactive elements focusable, visible focus indicators
+
+### Color Contrast Standards
+Maintain WCAG 2.1 AA contrast ratios: Normal text (4.5:1), Large text (3:1), UI components (3:1)
+
+**Demo Pattern:**
+```
+Line 61: .text-primary { color: #0066cc; } /* 7.05:1 ratio */
+Line 62: .text-muted { color: #6c757d; }   /* 4.54:1 ratio */
+```
+
+**Test with:** WebAIM Contrast Checker
+
+### Semantic HTML Structure
+Use appropriate HTML elements for their intended purpose.
+
+**Demo Pattern:**
+```
+Line 73: <button type="submit">Add to Cart</button> <!-- not <div> -->
+Line 77: <h1>{{ product.title }}</h1> <!-- proper hierarchy -->
+Line 82: <header role="banner">
+Line 84: <main id="main-content">
+```
+
+### Form Accessibility
+All form inputs must have associated labels and proper error handling.
+
+**Demo Pattern:**
+```
+Line 95: <label for="ContactFormName">Name *</label>
+Line 96: <input id="ContactFormName" aria-describedby="name-error">
+Line 103: <div id="name-error" role="alert">Error message</div>
+```
+
+### ARIA Implementation
+Use ARIA attributes to enhance semantic meaning for screen readers.
+
+**Demo Pattern:**
+```
+Line 118: <div role="dialog" aria-labelledby="cart-title" aria-modal="true">
+Line 125: <button aria-label="Close cart drawer">
+Line 132: <div aria-live="polite" aria-atomic="true" class="sr-only">
+Line 139: <fieldset><legend>{{ option.name }}</legend>
+Line 145: <input aria-describedby="variant-price">
+```
+
+**Check in:** `snippets/cart-drawer.liquid`, `sections/product.liquid`, `snippets/product-form.liquid`
+
+## Essential Shopify Implementations
+
+### Skip Links
+Add skip navigation at the beginning of each page.
+
+**Demo Pattern:**
+```
+Line 163: <a href="#main-content" class="skip-link">Skip to content</a>
+Line 170: <main id="main-content" tabindex="-1">
+```
+
+**Styles Pattern:**
+```
+Line 177: .skip-link { position: absolute; top: -40px; }
+Line 189: .skip-link:focus { top: 6px; }
+```
+
+**Check in:** `layout/theme.liquid`
+
+### Page Structure
+Ensure proper page titles and landmark structure.
+
+**Demo Pattern:**
+```
+Line 199: <title>{{ page_title }} - {{ shop.name }}</title>
+Line 109: <html lang="{{ request.locale.iso_code }}">
+```
+
+**Check in:** `layout/theme.liquid`
+
+### Modal Focus Management
+Implement proper focus trapping for modals and drawers.
+
+**Demo Pattern:**
+```
+Line 117: class AccessibleModal { constructor(element) { ... } }
+Line 126: open() { this.firstFocusable?.focus(); }
+Line 140: handleKeydown(e) { if (e.key === 'Escape') this.close(); }
+Line 144: if (e.key === 'Tab') { /* focus trap logic */ }
+```
+
+**Check in:** `assets/component-cart-notification.js`, `assets/component-modal-opener.js`
+
+### Responsive and Motion Considerations
+Support user preferences and responsive design.
+
+**Demo Pattern:**
+```
+Line 162: @media (prefers-reduced-motion: reduce) { animation-duration: 0.01ms !important; }
+Line 178: @media (max-width: 768px) { button { min-height: 44px; min-width: 44px; } }
+```
+
+## Testing and Validation
+
+### Manual Testing Checklist
+- [ ] Navigate entire site using only keyboard (Tab, Enter, Space, Arrow keys)
+- [ ] Test with screen reader (NVDA, JAWS, VoiceOver)
+- [ ] Verify color contrast meets WCAG standards
+- [ ] Check responsive design at 200% zoom
+- [ ] Validate HTML markup
+- [ ] Test modal focus trapping
+
+### Automated Testing Tools
+**Demo Commands:**
+```
+Line 204: npm install -g pa11y axe-cli
+Line 208: pa11y https://your-store.myshopify.com
+Line 209: axe https://your-store.myshopify.com
+```
+
+### Browser Extensions
+- **WAVE Web Accessibility Evaluator**
+- **axe DevTools** 
+- **Lighthouse** (built into Chrome DevTools)
+
+## Common Shopify Accessibility Issues
+
+### Cart Drawer Problems
+**Demo Pattern:**
+```
+Line 222: ❌ .style.display = 'block'; /* Poor implementation */
+Line 227: ✅ const cartDrawer = new AccessibleModal(element); cartDrawer.open();
+```
+
+### Product Variant Selection
+**Demo Pattern:**
+```
+Line 236: <div aria-live="polite" aria-atomic="true" id="variant-price">
+Line 240: <span class="price">{{ variant.price | money }}</span>
+```
+
+### Search and Filter Updates
+**Demo Pattern:**
+```
+Line 247: const announceFilterUpdate = (message) => { ... }
+Line 249: announcement.setAttribute('aria-live', 'polite');
+Line 250: announcement.setAttribute('class', 'sr-only');
+```
+
+## Implementation Guidelines
+
+1. **Start with theme structure** - Ensure `layout/theme.liquid` has proper landmarks
+2. **Focus on key user journeys** - Homepage, product pages, cart, checkout
+3. **Test early and often** - Use automated tools during development
+4. **Include real users** - Test with people who use assistive technologies
+5. **Document accessibility features** - Maintain clear documentation for ongoing compliance
+
+## Legal Compliance Notes
+
+- Shopify stores fall under ADA Title III as "places of public accommodation"
+- WCAG 2.1 AA is the accepted standard for legal compliance
+- Regular accessibility audits are recommended
+- Consider obtaining accessibility certification for legal protection
+- Keep detailed records of accessibility improvements and testing
+
+## Advanced Accessibility Patterns
+
+### Navigation Menu Accessibility
+Implement accessible dropdown and mega menus to ensure all users can navigate your store effectively.
+
+**Accessibility Impact:** Screen reader users need proper announcements when menus open/close. Keyboard users require logical tab order and escape mechanisms. Mobile users need touch-friendly interactions.
+
+**Key Requirements:**
+- Menu buttons must announce their expanded/collapsed state
+- Submenus should be hidden from screen readers when closed
+- Keyboard navigation with arrow keys, Enter, and Escape
+- Focus management when opening/closing menus
+- Proper ARIA labeling for menu relationships
+
+**Common Issues Solved:**
+- Menu items announced even when visually hidden
+- Keyboard users getting trapped in dropdown menus
+- Screen readers not understanding menu hierarchy
+- Mobile users unable to access dropdown content
+
+**Implementation Considerations:**
+- Use `aria-expanded` to indicate menu state changes
+- Set `tabindex="-1"` on hidden menu items to prevent keyboard access
+- Implement proper focus trapping within mega menus
+- Provide clear visual and programmatic focus indicators
+- Ensure touch targets meet 44px minimum size requirement
+
+**Demo Pattern:**
+```
+Line 45: <nav role="navigation" aria-label="Main navigation">
+Line 46: <button aria-expanded="false" aria-controls="submenu-1">Categories</button>
+Line 47: <ul id="submenu-1" aria-hidden="true">
+Line 48: <li><a href="/collections/..." tabindex="-1">Collection Name</a></li>
+```
+
+**Check in:** `snippets/component-nav-dropdown.liquid`, `snippets/component-nav-megamenu.liquid`
+
+### Search Functionality
+Make search accessible with proper announcements and keyboard navigation to ensure all customers can find products effectively.
+
+**Accessibility Impact:** Search is critical for e-commerce success. Screen reader users need clear instructions and result announcements. Keyboard users require proper focus management through search suggestions. Users with cognitive disabilities benefit from clear search feedback and error handling.
+
+**Key Requirements:**
+- Search form must be identified with `role="search"`
+- Input field needs descriptive labeling and instructions
+- Search results must be announced to screen readers
+- Predictive/autocomplete results need keyboard navigation
+- Search errors and empty states require clear communication
+- Search suggestions should be properly labeled and selectable
+
+**Common Issues Solved:**
+- Screen readers not identifying search functionality
+- Search results appearing without announcement
+- Keyboard users unable to navigate search suggestions
+- Unclear search instructions leading to user confusion
+- Search errors not being communicated accessibly
+
+**Implementation Considerations:**
+- Use `aria-live="polite"` for search result announcements
+- Implement proper keyboard navigation (Arrow keys, Enter, Escape)
+- Provide search instructions that screen readers can access
+- Handle empty search states with helpful messaging
+- Ensure search suggestions have proper ARIA labeling
+- Consider search history and saved searches for returning users
+
+**Demo Pattern:**
+```
+Line 62: <form role="search" aria-label="Site search">
+Line 63: <input type="search" aria-describedby="search-instructions" autocomplete="off">
+Line 64: <div id="search-instructions" class="sr-only">Type to search products</div>
+Line 65: <div role="status" aria-live="polite" aria-atomic="true">
+Line 66: Found {{ search.results_count }} results for "{{ search.terms }}"
+```
+
+**Check in:** `snippets/component-predictive-search.liquid`, `sections/main-search.liquid`
+
+### Collection Filters and Sorting
+Ensure filter controls are accessible and announce changes to help all users refine product searches effectively.
+
+**Accessibility Impact:** Filters are essential for product discovery in e-commerce. Screen reader users need clear filter labels and result announcements. Users with motor disabilities require accessible range sliders and checkbox controls. Cognitive accessibility benefits from clear filter states and easy reset options.
+
+**Key Requirements:**
+- Filter groups must use `fieldset` and `legend` elements for proper grouping
+- Range sliders need `aria-valuemin`, `aria-valuemax`, and `aria-valuenow` attributes
+- Filter changes should announce updated product counts
+- Applied filters must be clearly indicated and easily removable
+- Sort options need proper labeling and current selection indication
+- Filter reset functionality should be keyboard accessible
+
+**Common Issues Solved:**
+- Screen readers not understanding filter relationships
+- Range sliders without accessible value announcements
+- Filter changes not communicated to assistive technologies
+- Users unable to understand which filters are currently active
+- Complex filter interfaces causing navigation confusion
+
+**Implementation Considerations:**
+- Group related filters using `fieldset` with descriptive `legend`
+- Use `aria-live="polite"` for non-urgent filter result updates
+- Provide visual and programmatic indication of active filters
+- Implement clear "Clear all filters" functionality
+- Consider filter persistence across page navigation
+- Ensure mobile filter interfaces are touch-accessible
+
+**Demo Pattern:**
+```
+Line 78: <fieldset><legend>Filter by Price</legend>
+Line 79: <input type="range" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="250">
+Line 80: <output for="price-range">$250</output>
+Line 81: <div aria-live="polite">Showing {{ collection.products_count }} products</div>
+```
+
+**Check in:** `snippets/component-filters-*.liquid`, `sections/main-collection.liquid`
+
+### Pagination Accessibility
+Implement accessible page navigation with proper labeling to ensure users can navigate through product collections efficiently.
+
+**Accessibility Impact:** Pagination is crucial for large product catalogs. Screen reader users need clear page navigation context. Keyboard users require logical tab order through page links. Users with cognitive disabilities benefit from clear current page indicators and navigation options.
+
+**Key Requirements:**
+- Pagination must be wrapped in `<nav>` with descriptive `aria-label`
+- Current page should be indicated with `aria-current="page"`
+- Previous/Next links need descriptive `aria-label` attributes
+- Page numbers should be clearly distinguishable from navigation
+- Skip to first/last page options for long pagination lists
+- Clear indication of total pages and current position
+
+**Common Issues Solved:**
+- Screen readers not identifying pagination controls
+- Unclear current page indication for assistive technologies
+- Confusing navigation for users with cognitive disabilities
+- Keyboard navigation difficulties through page numbers
+- Lack of context about total pages or current position
+
+**Implementation Considerations:**
+- Use semantic `<nav>` element with proper labeling
+- Provide context like "Page 2 of 15" for screen readers
+- Implement keyboard shortcuts for power users (Ctrl+arrows)
+- Consider infinite scroll with accessible load more buttons
+- Ensure pagination works with browser back/forward buttons
+- Provide jump-to-page functionality for long lists
+
+**Demo Pattern:**
+```
+Line 92: <nav aria-label="Pagination navigation">
+Line 93: <a href="..." aria-label="Go to previous page">← Previous</a>
+Line 94: <a href="..." aria-current="page">2</a>
+Line 95: <a href="..." aria-label="Go to next page">Next →</a>
+```
+
+**Check in:** `snippets/component-pagination.liquid`
+
+## E-commerce Specific Accessibility
+
+### Product Comparison
+Make product comparison tables accessible to help customers make informed purchasing decisions regardless of their abilities.
+
+**Accessibility Impact:** Product comparison is crucial for e-commerce conversion. Screen reader users need proper table structure to understand product relationships. Users with cognitive disabilities benefit from clear comparison layouts. Keyboard users require easy navigation through comparison data.
+
+**Key Requirements:**
+- Use semantic `<table>` elements with proper headers
+- Provide descriptive `<caption>` explaining comparison purpose
+- Use `<th scope="col">` for product names and `<th scope="row">` for features
+- Include summary information for complex comparisons
+- Ensure comparison controls are keyboard accessible
+- Provide alternative text for comparison charts or graphs
+
+**Common Issues Solved:**
+- Screen readers unable to understand product relationships
+- Complex comparison data without proper structure
+- Visual-only comparison indicators without text alternatives
+- Keyboard navigation difficulties through comparison tables
+- Unclear comparison criteria for users with cognitive disabilities
+
+**Implementation Considerations:**
+- Use `<caption>` to describe what's being compared
+- Implement proper header associations with `scope` attributes
+- Consider providing comparison summaries for complex data
+- Ensure comparison controls work with keyboard navigation
+- Add "Compare" button states with proper ARIA attributes
+- Provide easy removal of products from comparison
+
+**Demo Pattern:**
+```
+Line 108: <table role="table" aria-label="Product comparison">
+Line 109: <caption>Compare {{ products.size }} selected products</caption>
+Line 110: <thead><tr><th scope="col">Feature</th><th scope="col">{{ product.title }}</th></tr></thead>
+Line 111: <tbody><tr><th scope="row">Price</th><td>{{ product.price | money }}</td></tr></tbody>
+```
+
+**Check in:** `sections/product-comparison.liquid`
+
+### Product Reviews and Ratings
+Ensure reviews are accessible to screen readers to help all customers make informed decisions based on social proof.
+
+**Accessibility Impact:** Reviews and ratings are key trust signals in e-commerce. Screen reader users need ratings communicated clearly as text, not just visual stars. Users with cognitive disabilities benefit from clear review structures and helpful/unhelpful voting systems.
+
+**Key Requirements:**
+- Star ratings must have text equivalents using `aria-label`
+- Use `role="img"` for star rating displays with descriptive labels
+- Review content should be properly structured with headings
+- Voting buttons (helpful/unhelpful) need clear labeling
+- Review pagination should follow accessibility guidelines
+- Review forms must be fully accessible with proper error handling
+
+**Common Issues Solved:**
+- Star ratings invisible to screen readers
+- Review content without proper structure or navigation
+- Voting mechanisms without clear purpose indication
+- Review filtering controls inaccessible to keyboard users
+- Unclear reviewer information and verification status
+
+**Implementation Considerations:**
+- Always provide text alternatives for visual ratings
+- Structure reviews with proper headings and landmarks
+- Implement accessible review filtering and sorting
+- Ensure review submission forms follow form accessibility guidelines
+- Consider review helpfulness indicators for screen readers
+- Provide clear reviewer verification and date information
+
+**Demo Pattern:**
+```
+Line 125: <div role="img" aria-label="4.5 out of 5 stars">★★★★☆</div>
+Line 126: <span class="sr-only">Rated 4.5 out of 5 stars based on 127 reviews</span>
+Line 127: <section aria-labelledby="reviews-heading">
+Line 128: <h3 id="reviews-heading">Customer Reviews</h3>
+```
+
+### Wishlist and Favorites
+Make wishlist functionality accessible to allow all customers to save products for future consideration.
+
+**Accessibility Impact:** Wishlists enhance customer retention and conversion. Screen reader users need clear indication of wishlist status. Users with motor disabilities require easy toggle functionality. Wishlist management should be accessible across devices.
+
+**Key Requirements:**
+- Wishlist buttons must use `aria-pressed` to indicate current state
+- Button labels should clearly describe the action (add/remove)
+- State changes must be announced to screen readers
+- Wishlist page should be fully navigable by keyboard
+- Wishlist items need proper removal and editing functionality
+- Cross-device wishlist sync should maintain accessibility
+
+**Common Issues Solved:**
+- Unclear wishlist button states for screen readers
+- Wishlist changes not announced to assistive technologies
+- Difficult wishlist management for keyboard users
+- Visual-only indicators without programmatic equivalents
+- Inaccessible wishlist sharing functionality
+
+**Implementation Considerations:**
+- Use `aria-pressed` for toggle state indication
+- Provide immediate feedback for wishlist actions
+- Implement accessible wishlist management interfaces
+- Consider wishlist organization features (folders, tags)
+- Ensure wishlist sharing is accessible
+- Provide clear empty wishlist states
+
+**Demo Pattern:**
+```
+Line 142: <button aria-pressed="false" aria-label="Add {{ product.title }} to wishlist">
+Line 143: <span aria-hidden="true">♡</span> Add to Wishlist
+Line 144: <span class="sr-only" aria-live="polite">Added to wishlist</span>
+```
+
+### Quantity Selectors
+Implement accessible quantity controls to ensure all customers can easily specify desired product quantities.
+
+**Accessibility Impact:** Quantity selection is essential for cart functionality. Screen reader users need clear quantity controls with proper labeling. Users with motor disabilities require easy increment/decrement options. Stock availability should be clearly communicated.
+
+**Key Requirements:**
+- Quantity inputs must have associated labels
+- Increment/decrement buttons need descriptive `aria-label` attributes
+- Stock information should be programmatically associated with quantity controls
+- Quantity limits must be clearly communicated
+- Error states for invalid quantities need proper announcement
+- Bulk quantity options should be keyboard accessible
+
+**Common Issues Solved:**
+- Unlabeled quantity input fields
+- Increment/decrement buttons without clear purpose
+- Stock limitations not communicated to screen readers
+- Quantity errors without accessible error messages
+- Complex quantity selectors without keyboard support
+
+**Implementation Considerations:**
+- Associate quantity controls with clear labels and descriptions
+- Use `aria-controls` to link increment/decrement buttons to inputs
+- Implement proper validation with accessible error messages
+- Consider bulk quantity selection for wholesale customers
+- Provide stock availability context with `aria-describedby`
+- Ensure quantity changes update cart totals accessibly
+
+**Demo Pattern:**
+```
+Line 158: <label for="quantity-{{ product.id }}">Quantity</label>
+Line 159: <button aria-label="Decrease quantity" aria-controls="quantity-{{ product.id }}">-</button>
+Line 160: <input id="quantity-{{ product.id }}" type="number" min="1" aria-describedby="stock-info">
+Line 161: <button aria-label="Increase quantity" aria-controls="quantity-{{ product.id }}">+</button>
+Line 162: <div id="stock-info">{{ product.selected_variant.inventory_quantity }} in stock</div>
+```
+
+## Checkout Accessibility
+
+### Multi-step Checkout Process
+Ensure checkout steps are clearly identified and navigable to reduce cart abandonment and support all users through the purchase process.
+
+**Accessibility Impact:** Checkout is the most critical conversion point in e-commerce. Screen reader users need clear progress indication and step navigation. Users with cognitive disabilities benefit from clear process visualization. Anxiety around complex checkout processes can be reduced with proper accessibility.
+
+**Key Requirements:**
+- Progress indicators must be programmatically accessible with proper roles
+- Current step should be clearly indicated with `aria-current="step"`
+- Each step must be navigable and identifiable by screen readers
+- Step completion status should be announced to assistive technologies
+- Back/forward navigation between steps must be keyboard accessible
+- Error prevention and recovery at each step
+
+**Common Issues Solved:**
+- Users losing track of checkout progress
+- Unclear step navigation causing abandonment
+- Progress indicators invisible to screen readers
+- Inability to return to previous steps to make corrections
+- Lack of confirmation before final submission
+
+**Implementation Considerations:**
+- Use ordered lists with proper ARIA labels for progress tracking
+- Implement breadcrumb-style navigation for step jumping
+- Provide clear step completion indicators
+- Allow editing of previous steps without losing current progress
+- Include estimated completion time for complex checkouts
+- Offer guest checkout options with minimal barriers
+
+**Demo Pattern:**
+```
+Line 175: <ol role="list" aria-label="Checkout progress">
+Line 176: <li aria-current="step">1. Shipping Information</li>
+Line 177: <li>2. Payment Method</li>
+Line 178: <li>3. Order Review</li>
+Line 179: <div role="status" aria-live="polite">Step 1 of 3: Shipping Information</div>
+```
+
+### Address Forms
+Make address entry accessible with proper labeling to ensure smooth delivery information collection.
+
+**Accessibility Impact:** Address forms are complex but essential for e-commerce fulfillment. Screen reader users need clear field labeling and relationship understanding. International customers require flexible address formats. Autocomplete features must work with assistive technologies.
+
+**Key Requirements:**
+- All address fields must have clear, descriptive labels
+- Required fields should be clearly marked and announced
+- Field relationships should be grouped with `fieldset` and `legend`
+- Address validation errors must be accessible and actionable
+- International address formats should be supported
+- Autocomplete attributes should follow standard conventions
+
+**Common Issues Solved:**
+- Unclear address field requirements and formats
+- Address validation errors without clear guidance
+- Inflexible address formats for international customers
+- Autocomplete features incompatible with screen readers
+- Complex address entry without proper grouping
+
+**Implementation Considerations:**
+- Use appropriate `autocomplete` attributes for address fields
+- Implement progressive enhancement for address validation
+- Support multiple address formats based on country selection
+- Provide clear error messages with correction guidance
+- Consider address lookup services with accessible interfaces
+- Allow saved addresses with accessible management
+
+**Demo Pattern:**
+```
+Line 192: <fieldset><legend>Shipping Address</legend>
+Line 193: <label for="address1">Street Address <abbr title="required">*</abbr></label>
+Line 194: <input id="address1" required aria-describedby="address-error">
+Line 195: <label for="country">Country</label>
+Line 196: <select id="country" aria-describedby="country-help">
+Line 197: <div id="country-help">Select your country for shipping options</div>
+```
+
+### Payment Form Security
+Ensure payment forms are accessible while maintaining security standards to build customer trust and ensure successful transactions.
+
+**Accessibility Impact:** Payment forms require highest security and accessibility standards. Screen reader users need clear payment field guidance without compromising security. Users with disabilities must be able to complete secure transactions independently. Trust indicators must be accessible.
+
+**Key Requirements:**
+- Payment fields must have clear, specific labels
+- Security features should not interfere with assistive technologies
+- Card validation should provide accessible error feedback
+- Payment methods should be clearly selectable and identifiable
+- Security indicators (SSL, trust badges) must have text alternatives
+- Payment processing status should be announced accessibly
+
+**Common Issues Solved:**
+- Payment security measures blocking assistive technology access
+- Unclear payment field requirements and validation
+- Inaccessible payment method selection interfaces
+- Payment processing without accessible status updates
+- Security information only communicated visually
+
+**Implementation Considerations:**
+- Balance security requirements with accessibility needs
+- Use appropriate `autocomplete` attributes for payment fields
+- Implement accessible card type detection and validation
+- Provide clear payment processing status and confirmation
+- Ensure payment security indicators have text equivalents
+- Support multiple payment methods with equal accessibility
+
+**Demo Pattern:**
+```
+Line 210: <fieldset><legend>Payment Information</legend>
+Line 211: <label for="card-number">Card Number</label>
+Line 212: <input id="card-number" autocomplete="cc-number" aria-describedby="card-help">
+Line 213: <div id="card-help">Enter your 16-digit card number</div>
+Line 214: <div role="alert" aria-live="assertive" id="payment-errors"></div>
+```
+
+## Loading States and Progressive Enhancement
+
+### Skeleton Screens
+Provide accessible loading states to reduce perceived loading time and maintain user engagement during content loading.
+
+**Accessibility Impact:** Loading states prevent user confusion and anxiety during content loading. Screen reader users need to understand that content is loading. Users with slower connections benefit from clear loading indicators. Skeleton screens provide better UX than blank screens.
+
+**Key Requirements:**
+- Loading containers must use `role="status"` for screen reader announcements
+- Skeleton elements should be hidden from screen readers with `aria-hidden="true"`
+- Loading messages must be announced with screen reader friendly text
+- Loading states should respect reduced motion preferences
+- Provide estimated loading times when possible
+- Ensure loading states don't interfere with existing content
+
+**Common Issues Solved:**
+- Users thinking the page is broken during loading
+- Screen readers not announcing loading states
+- Loading animations causing motion sensitivity issues
+- Unclear progress indication for long operations
+- Loading states blocking interaction with loaded content
+
+**Implementation Considerations:**
+- Use `aria-live="polite"` for non-urgent loading announcements
+- Implement skeleton screens that match final content structure
+- Provide loading cancellation options for long operations
+- Consider offline states and connection quality
+- Ensure loading states work without JavaScript
+- Test loading states with various connection speeds
+
+**Demo Pattern:**
+```
+Line 228: <div role="status" aria-label="Loading products">
+Line 229: <div class="skeleton-product-card" aria-hidden="true"></div>
+Line 230: <span class="sr-only">Loading product information, please wait...</span>
+```
+
+### Lazy Loading Images
+Implement accessible image lazy loading to improve performance while maintaining accessibility for all users.
+
+**Accessibility Impact:** Lazy loading improves page performance, especially important for users with limited bandwidth. Screen reader users need proper alt text even for lazy-loaded images. Loading indicators help users understand when images are being fetched.
+
+**Key Requirements:**
+- Lazy-loaded images must maintain proper alt text
+- Loading placeholders should be accessible
+- Image loading status should be communicated to screen readers
+- Fallback behavior required when lazy loading fails
+- Critical images should not be lazy loaded
+- Loading indicators should be dismissible
+
+**Common Issues Solved:**
+- Images loading without accessibility context
+- Missing alt text on lazy-loaded images
+- Users not understanding when images are loading
+- Poor performance on slower connections without proper feedback
+- Lazy loading interfering with screen reader navigation
+
+**Implementation Considerations:**
+- Use `loading="lazy"` attribute with proper fallbacks
+- Maintain alt text in data attributes during loading
+- Provide meaningful loading placeholders
+- Implement intersection observer with accessibility considerations
+- Consider preloading critical above-the-fold images
+- Test with various screen reader and browser combinations
+
+**Demo Pattern:**
+```
+Line 244: <img loading="lazy" src="placeholder.jpg" data-src="product.jpg" 
+Line 245: alt="{{ product.title }}" aria-describedby="loading-status">
+Line 246: <div id="loading-status" class="sr-only" aria-live="polite">Image loading...</div>
+```
+
+### Progress Indicators
+Show progress for long operations to keep users informed and reduce abandonment during extended processes.
+
+**Accessibility Impact:** Progress indicators are crucial for users with disabilities who may need more time to complete tasks. Screen reader users need progress announcements. Visual progress indicators must have programmatic equivalents.
+
+**Key Requirements:**
+- Progress bars must use `role="progressbar"` with proper value attributes
+- Progress updates should be announced to screen readers
+- Provide both percentage and descriptive progress information
+- Allow cancellation of long-running operations
+- Include estimated completion times when possible
+- Progress indicators should be keyboard focusable for status checking
+
+**Common Issues Solved:**
+- Users abandoning long operations without progress feedback
+- Progress information only available visually
+- Unclear progress status for screen reader users
+- No way to cancel or pause long operations
+- Progress indicators without meaningful completion estimates
+
+**Implementation Considerations:**
+- Use `aria-valuenow`, `aria-valuemin`, and `aria-valuemax` for progress bars
+- Implement live region updates for progress announcements
+- Provide both determinate and indeterminate progress indicators
+- Consider progress persistence across page refreshes
+- Include contextual information about what's being processed
+- Test progress indicators with various assistive technologies
+
+**Demo Pattern:**
+```
+Line 260: <div role="progressbar" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100" 
+Line 261: aria-label="Upload progress">
+Line 262: <div class="progress-bar" style="width: 65%"></div>
+Line 263: <span class="sr-only">65% complete</span>
+```
+
+## Mobile and Touch Accessibility
+
+### Touch Target Sizing
+Ensure touch targets meet accessibility standards to support users with motor disabilities and improve mobile usability for all customers.
+
+**Accessibility Impact:** Touch target sizing is critical for users with motor disabilities, tremors, or limited dexterity. Elderly users and users with large fingers benefit from appropriately sized touch targets. Mobile shopping conversion rates improve with accessible touch interfaces.
+
+**Key Requirements:**
+- All interactive elements must be at least 44x44 pixels (iOS) or 48x48 pixels (Android)
+- Touch targets should have adequate spacing between them (minimum 8px)
+- Nested interactive elements should be avoided
+- Touch targets should provide visual and haptic feedback
+- Consider different device orientations and screen sizes
+- Ensure touch targets work with assistive touch technologies
+
+**Common Issues Solved:**
+- Small buttons difficult to tap on mobile devices
+- Accidentally triggering adjacent interactive elements
+- Touch targets too close together causing user frustration
+- Inconsistent touch target sizes across the interface
+- Interactive elements without proper touch feedback
+
+**Implementation Considerations:**
+- Use CSS to ensure minimum touch target sizes across all interactive elements
+- Provide adequate spacing between touch targets
+- Consider thumb reach and one-handed mobile usage patterns
+- Test with various device sizes and orientations
+- Implement proper touch feedback with CSS `:active` states
+- Ensure touch targets scale appropriately with text size adjustments
+
+**Demo Pattern:**
+```
+Line 277: button, .btn, a, input[type="submit"] { min-height: 44px; min-width: 44px; }
+Line 278: .touch-target { padding: 12px; margin: 2px; } /* Ensure spacing */
+```
+
+### Swipe Gestures
+Provide alternatives to swipe-only navigation to ensure all users can access carousel and slider content regardless of their interaction capabilities.
+
+**Accessibility Impact:** Swipe-only navigation excludes users with motor disabilities who cannot perform swipe gestures. Screen reader users need alternative navigation methods. Switch control users require button-based navigation options.
+
+**Key Requirements:**
+- Always provide button alternatives to swipe gestures
+- Swipe areas should be properly labeled for screen readers
+- Keyboard navigation must be available for carousel content
+- Auto-advancing carousels should be pausable
+- Provide clear indication of current position and total items
+- Support multiple navigation methods simultaneously
+
+**Common Issues Solved:**
+- Content accessible only through swipe gestures
+- Carousels without keyboard navigation support
+- Auto-advancing content causing motion sensitivity issues
+- Unclear current position in carousel content
+- Swipe gestures not working with assistive technologies
+
+**Implementation Considerations:**
+- Always include previous/next buttons alongside swipe functionality
+- Use ARIA live regions to announce carousel changes
+- Implement keyboard arrow key navigation for carousel items
+- Provide pagination indicators with proper ARIA labeling
+- Consider touch, mouse, and keyboard interaction patterns
+- Test carousel functionality with various assistive technologies
+
+**Demo Pattern:**
+```
+Line 292: <div class="carousel" role="region" aria-label="Product images">
+Line 293: <button aria-label="Previous image">‹</button>
+Line 294: <div class="carousel-track" aria-live="polite">
+Line 295: <button aria-label="Next image">›</button>
+Line 296: <div class="sr-only">Swipe left or right to navigate images</div>
+```
+
+## Error Handling and Validation
+
+### Form Validation Messages
+Provide clear, accessible error messages.
+
+**Demo Pattern:**
+```
+Line 310: <input aria-invalid="true" aria-describedby="email-error">
+Line 311: <div id="email-error" role="alert" class="error-message">
+Line 312: Please enter a valid email address
+Line 313: <div aria-live="polite">Error: Email format is incorrect</div>
+```
+
+### Network Error Handling
+Handle connection issues accessibly.
+
+**Demo Pattern:**
+```
+Line 327: <div role="alert" aria-live="assertive" class="network-error">
+Line 328: <h2>Connection Error</h2>
+Line 329: <p>Unable to load content. Please check your connection and try again.</p>
+Line 330: <button onclick="retry()">Retry</button>
+```
+
+### Cart Error States
+Handle cart operations with clear feedback.
+
+**Demo Pattern:**
+```
+Line 344: <div role="status" aria-live="polite" id="cart-feedback">
+Line 345: {% if cart.item_count == 0 %}Your cart is empty{% endif %}
+Line 346: <div role="alert" aria-live="assertive" id="cart-errors">
+Line 347: Item out of stock and removed from cart
+```
+
+## Internationalization and Accessibility
+
+### Right-to-Left Language Support
+Support RTL languages accessibly.
+
+**Demo Pattern:**
+```
+Line 361: <html dir="{{ localization.country.currency.iso_code | rtl_check }}" lang="{{ request.locale.iso_code }}">
+Line 362: [dir="rtl"] .product-grid { direction: rtl; text-align: right; }
+Line 363: [dir="rtl"] .breadcrumb::before { content: "‹"; }
+```
+
+### Currency and Number Formatting
+Format numbers accessibly for different locales.
+
+**Demo Pattern:**
+```
+Line 377: <span aria-label="{{ product.price | money | remove: currency_symbol }} {{ currency_name }}">
+Line 378: {{ product.price | money }}
+Line 379: <span class="sr-only">Price in {{ localization.country.currency.name }}</span>
+```
+
+## Performance and Accessibility
+
+### Critical CSS for Accessibility
+Ensure accessibility styles load first.
+
+**Demo Pattern:**
+```
+Line 393: /* Critical accessibility CSS */
+Line 394: .sr-only { clip: rect(0,0,0,0); position: absolute; }
+Line 395: *:focus-visible { outline: 2px solid #0066cc; }
+Line 396: [aria-hidden="true"] { display: none !important; }
+```
+
+### Reduced Motion Performance
+Optimize animations for accessibility.
+
+**Demo Pattern:**
+```
+Line 410: @media (prefers-reduced-motion: reduce) {
+Line 411: * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+Line 412: .parallax, .auto-carousel { transform: none !important; }
+```
+
+## Advanced Testing Strategies
+
+### Automated Accessibility Testing
+Set up comprehensive automated testing.
+
+**Demo Commands:**
+```
+Line 426: # CI/CD Integration
+Line 427: npm run test:a11y
+Line 428: axe-cli --tags wcag2a,wcag2aa --exclude "#third-party-widget"
+Line 429: pa11y-ci --sitemap https://store.com/sitemap.xml
+```
+
+### Manual Testing Protocols
+Detailed manual testing procedures.
+
+**Testing Scenarios:**
+- [ ] **Keyboard-only navigation** - Unplug mouse, navigate entire site
+- [ ] **Screen reader testing** - NVDA (Windows), JAWS (Windows), VoiceOver (Mac)
+- [ ] **Voice control** - Dragon NaturallySpeaking, Voice Control (Mac)
+- [ ] **High contrast mode** - Windows High Contrast, browser extensions
+- [ ] **Zoom testing** - 200%, 400% zoom levels
+- [ ] **Mobile screen reader** - TalkBack (Android), VoiceOver (iOS)
+
+### Accessibility Monitoring
+Set up ongoing accessibility monitoring.
+
+**Demo Pattern:**
+```
+Line 450: // Continuous monitoring
+Line 451: if (window.location.hostname !== 'localhost') {
+Line 452: import('./accessibility-monitor.js');
+Line 453: window.a11yMonitor.track('page-load', { url: window.location.href });
+```
+
+## Team Integration and Workflow
+
+### Design System Integration
+Ensure accessibility in design components.
+
+**Demo Pattern:**
+```
+Line 467: /* Component accessibility requirements */
+Line 468: .btn { min-height: 44px; min-width: 44px; position: relative; }
+Line 469: .btn[aria-pressed="true"]::after { content: "selected"; position: absolute; }
+Line 470: .card:focus-within { outline: 2px solid #0066cc; }
+```
+
+### Code Review Checklist
+Accessibility items for code reviews.
+
+**Review Items:**
+- [ ] All images have appropriate alt text
+- [ ] Form inputs have associated labels
+- [ ] Interactive elements are keyboard accessible
+- [ ] Color contrast meets WCAG standards
+- [ ] ARIA attributes used correctly
+- [ ] Focus management implemented for modals
+- [ ] Error messages are announced to screen readers
+- [ ] Loading states have proper announcements
+
+### Documentation Standards
+Document accessibility features for maintenance.
+
+**Demo Pattern:**
+```
+Line 492: /**
+Line 493: * @accessibility
+Line 494: * - Supports keyboard navigation (Enter, Space, Arrow keys)
+Line 495: * - Announces state changes to screen readers
+Line 496: * - Maintains focus management in modal context
+Line 497: * - Respects prefers-reduced-motion setting
+Line 498: */
+```
+
+## Compliance and Legal Protection
+
+### WCAG 2.1 AA Success Criteria Mapping
+Map implementation to specific WCAG criteria.
+
+**Success Criteria Coverage:**
+- **1.1.1** Non-text Content - Alt text implementation
+- **1.3.1** Info and Relationships - Semantic HTML, ARIA
+- **1.4.3** Contrast (Minimum) - Color contrast standards
+- **2.1.1** Keyboard - Full keyboard accessibility
+- **2.4.1** Bypass Blocks - Skip links
+- **2.4.6** Headings and Labels - Proper heading hierarchy
+- **3.2.2** On Input - No unexpected context changes
+- **4.1.2** Name, Role, Value - Proper ARIA implementation
+
+### Accessibility Statement Template
+Provide transparency about accessibility efforts.
+
+**Demo Pattern:**
+```
+Line 522: <div class="accessibility-statement">
+Line 523: <h2>Accessibility Statement</h2>
+Line 524: <p>We are committed to ensuring digital accessibility for people with disabilities.</p>
+Line 525: <p>We continually improve the user experience and apply relevant accessibility standards.</p>
+Line 526: <p>Contact us at accessibility@store.com for assistance.</p>
+```
+
+### Legal Risk Mitigation
+Steps to reduce legal accessibility risks.
+
+**Risk Mitigation Strategies:**
+1. **Regular audits** - Monthly automated scans, quarterly manual reviews
+2. **User feedback** - Accessibility feedback form, user testing sessions  
+3. **Staff training** - Accessibility awareness training for all team members
+4. **Documentation** - Maintain records of accessibility improvements
+5. **Third-party compliance** - Ensure all plugins/widgets meet standards
+6. **Incident response** - Process for handling accessibility complaints
+
+Remember: Accessibility is not a one-time implementation but an ongoing commitment to inclusive design.# Shopify Accessibility Implementation Guide
+
+Apply these accessibility standards when developing or auditing Shopify stores to ensure WCAG 2.1 AA compliance and ADA adherence.
+
+## Core Accessibility Requirements
+
+### Image Accessibility
+Always provide meaningful alt text for images that convey information, empty alt text for decorative images.
+
+**Demo Pattern:**
+```
+Line 12: <img src="..." alt="{{ product.featured_image.alt | default: product.title }}">
+Line 15: <img src="..." alt="" role="presentation"> <!-- decorative -->
+Line 18: <img src="..." alt="{{ shop.name }} logo">
+```
+
+**Check in:** `sections/product-*.liquid`, `snippets/product-card.liquid`, `sections/hero-banner.liquid`
+
+### Keyboard Navigation
+Ensure all interactive elements are keyboard accessible with visible focus indicators.
+
+**Demo Pattern:**
+```
+Line 34: *:focus-visible { outline: 2px solid #0066cc; outline-offset: 2px; }
+Line 41: button:focus-visible { box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3); }
+```
+
+**Requirements:** Tab order follows logical flow, all interactive elements focusable, visible focus indicators
+
+### Color Contrast Standards
+Maintain WCAG 2.1 AA contrast ratios: Normal text (4.5:1), Large text (3:1), UI components (3:1)
+
+**Demo Pattern:**
+```
+Line 61: .text-primary { color: #0066cc; } /* 7.05:1 ratio */
+Line 62: .text-muted { color: #6c757d; }   /* 4.54:1 ratio */
+```
+
+**Test with:** WebAIM Contrast Checker
+
+### Semantic HTML Structure
+Use appropriate HTML elements for their intended purpose.
+
+**Demo Pattern:**
+```
+Line 73: <button type="submit">Add to Cart</button> <!-- not <div> -->
+Line 77: <h1>{{ product.title }}</h1> <!-- proper hierarchy -->
+Line 82: <header role="banner">
+Line 84: <main id="main-content">
+```
+
+### Form Accessibility
+All form inputs must have associated labels and proper error handling.
+
+**Demo Pattern:**
+```
+Line 95: <label for="ContactFormName">Name *</label>
+Line 96: <input id="ContactFormName" aria-describedby="name-error">
+Line 103: <div id="name-error" role="alert">Error message</div>
+```
+
+### ARIA Implementation
+Use ARIA attributes to enhance semantic meaning for screen readers.
+
+**Demo Pattern:**
+```
+Line 118: <div role="dialog" aria-labelledby="cart-title" aria-modal="true">
+Line 125: <button aria-label="Close cart drawer">
+Line 132: <div aria-live="polite" aria-atomic="true" class="sr-only">
+Line 139: <fieldset><legend>{{ option.name }}</legend>
+Line 145: <input aria-describedby="variant-price">
+```
+
+**Check in:** `snippets/cart-drawer.liquid`, `sections/product.liquid`, `snippets/product-form.liquid`
+
+## Essential Shopify Implementations
+
+### Skip Links
+Add skip navigation at the beginning of each page.
+
+**Demo Pattern:**
+```
+Line 163: <a href="#main-content" class="skip-link">Skip to content</a>
+Line 170: <main id="main-content" tabindex="-1">
+```
+
+**Styles Pattern:**
+```
+Line 177: .skip-link { position: absolute; top: -40px; }
+Line 189: .skip-link:focus { top: 6px; }
+```
+
+**Check in:** `layout/theme.liquid`
+
+### Page Structure
+Ensure proper page titles and landmark structure.
+
+**Demo Pattern:**
+```
+Line 199: <title>{{ page_title }} - {{ shop.name }}</title>
+Line 109: <html lang="{{ request.locale.iso_code }}">
+```
+
+**Check in:** `layout/theme.liquid`
+
+### Modal Focus Management
+Implement proper focus trapping for modals and drawers.
+
+**Demo Pattern:**
+```
+Line 117: class AccessibleModal { constructor(element) { ... } }
+Line 126: open() { this.firstFocusable?.focus(); }
+Line 140: handleKeydown(e) { if (e.key === 'Escape') this.close(); }
+Line 144: if (e.key === 'Tab') { /* focus trap logic */ }
+```
+
+**Check in:** `assets/component-cart-notification.js`, `assets/component-modal-opener.js`
+
+### Responsive and Motion Considerations
+Support user preferences and responsive design.
+
+**Demo Pattern:**
+```
+Line 162: @media (prefers-reduced-motion: reduce) { animation-duration: 0.01ms !important; }
+Line 178: @media (max-width: 768px) { button { min-height: 44px; min-width: 44px; } }
+```
+
+## Testing and Validation
+
+### Manual Testing Checklist
+- [ ] Navigate entire site using only keyboard (Tab, Enter, Space, Arrow keys)
+- [ ] Test with screen reader (NVDA, JAWS, VoiceOver)
+- [ ] Verify color contrast meets WCAG standards
+- [ ] Check responsive design at 200% zoom
+- [ ] Validate HTML markup
+- [ ] Test modal focus trapping
+
+### Automated Testing Tools
+**Demo Commands:**
+```
+Line 204: npm install -g pa11y axe-cli
+Line 208: pa11y https://your-store.myshopify.com
+Line 209: axe https://your-store.myshopify.com
+```
+
+### Browser Extensions
+- **WAVE Web Accessibility Evaluator**
+- **axe DevTools** 
+- **Lighthouse** (built into Chrome DevTools)
+
+## Common Shopify Accessibility Issues
+
+### Cart Drawer Problems
+**Demo Pattern:**
+```
+Line 222: ❌ .style.display = 'block'; /* Poor implementation */
+Line 227: ✅ const cartDrawer = new AccessibleModal(element); cartDrawer.open();
+```
+
+### Product Variant Selection
+**Demo Pattern:**
+```
+Line 236: <div aria-live="polite" aria-atomic="true" id="variant-price">
+Line 240: <span class="price">{{ variant.price | money }}</span>
+```
+
+### Search and Filter Updates
+**Demo Pattern:**
+```
+Line 247: const announceFilterUpdate = (message) => { ... }
+Line 249: announcement.setAttribute('aria-live', 'polite');
+Line 250: announcement.setAttribute('class', 'sr-only');
+```
+
+## Implementation Guidelines
+
+1. **Start with theme structure** - Ensure `layout/theme.liquid` has proper landmarks
+2. **Focus on key user journeys** - Homepage, product pages, cart, checkout
+3. **Test early and often** - Use automated tools during development
+4. **Include real users** - Test with people who use assistive technologies
+5. **Document accessibility features** - Maintain clear documentation for ongoing compliance
+
+## Legal Compliance Notes
+
+- Shopify stores fall under ADA Title III as "places of public accommodation"
+- WCAG 2.1 AA is the accepted standard for legal compliance
+- Regular accessibility audits are recommended
+- Consider obtaining accessibility certification for legal protection
+- Keep detailed records of accessibility improvements and testing
+
+## Advanced Accessibility Patterns
+
+### Navigation Menu Accessibility
+Implement accessible dropdown and mega menus to ensure all users can navigate your store effectively.
+
+**Accessibility Impact:** Screen reader users need proper announcements when menus open/close. Keyboard users require logical tab order and escape mechanisms. Mobile users need touch-friendly interactions.
+
+**Key Requirements:**
+- Menu buttons must announce their expanded/collapsed state
+- Submenus should be hidden from screen readers when closed
+- Keyboard navigation with arrow keys, Enter, and Escape
+- Focus management when opening/closing menus
+- Proper ARIA labeling for menu relationships
+
+**Common Issues Solved:**
+- Menu items announced even when visually hidden
+- Keyboard users getting trapped in dropdown menus
+- Screen readers not understanding menu hierarchy
+- Mobile users unable to access dropdown content
+
+**Implementation Considerations:**
+- Use `aria-expanded` to indicate menu state changes
+- Set `tabindex="-1"` on hidden menu items to prevent keyboard access
+- Implement proper focus trapping within mega menus
+- Provide clear visual and programmatic focus indicators
+- Ensure touch targets meet 44px minimum size requirement
+
+**Demo Pattern:**
+```
+Line 45: <nav role="navigation" aria-label="Main navigation">
+Line 46: <button aria-expanded="false" aria-controls="submenu-1">Categories</button>
+Line 47: <ul id="submenu-1" aria-hidden="true">
+Line 48: <li><a href="/collections/..." tabindex="-1">Collection Name</a></li>
+```
+
+**Check in:** `snippets/component-nav-dropdown.liquid`, `snippets/component-nav-megamenu.liquid`
+
+### Search Functionality
+Make search accessible with proper announcements and keyboard navigation to ensure all customers can find products effectively.
+
+**Accessibility Impact:** Search is critical for e-commerce success. Screen reader users need clear instructions and result announcements. Keyboard users require proper focus management through search suggestions. Users with cognitive disabilities benefit from clear search feedback and error handling.
+
+**Key Requirements:**
+- Search form must be identified with `role="search"`
+- Input field needs descriptive labeling and instructions
+- Search results must be announced to screen readers
+- Predictive/autocomplete results need keyboard navigation
+- Search errors and empty states require clear communication
+- Search suggestions should be properly labeled and selectable
+
+**Common Issues Solved:**
+- Screen readers not identifying search functionality
+- Search results appearing without announcement
+- Keyboard users unable to navigate search suggestions
+- Unclear search instructions leading to user confusion
+- Search errors not being communicated accessibly
+
+**Implementation Considerations:**
+- Use `aria-live="polite"` for search result announcements
+- Implement proper keyboard navigation (Arrow keys, Enter, Escape)
+- Provide search instructions that screen readers can access
+- Handle empty search states with helpful messaging
+- Ensure search suggestions have proper ARIA labeling
+- Consider search history and saved searches for returning users
+
+**Demo Pattern:**
+```
+Line 62: <form role="search" aria-label="Site search">
+Line 63: <input type="search" aria-describedby="search-instructions" autocomplete="off">
+Line 64: <div id="search-instructions" class="sr-only">Type to search products</div>
+Line 65: <div role="status" aria-live="polite" aria-atomic="true">
+Line 66: Found {{ search.results_count }} results for "{{ search.terms }}"
+```
+
+**Check in:** `snippets/component-predictive-search.liquid`, `sections/main-search.liquid`
+
+### Collection Filters and Sorting
+Ensure filter controls are accessible and announce changes to help all users refine product searches effectively.
+
+**Accessibility Impact:** Filters are essential for product discovery in e-commerce. Screen reader users need clear filter labels and result announcements. Users with motor disabilities require accessible range sliders and checkbox controls. Cognitive accessibility benefits from clear filter states and easy reset options.
+
+**Key Requirements:**
+- Filter groups must use `fieldset` and `legend` elements for proper grouping
+- Range sliders need `aria-valuemin`, `aria-valuemax`, and `aria-valuenow` attributes
+- Filter changes should announce updated product counts
+- Applied filters must be clearly indicated and easily removable
+- Sort options need proper labeling and current selection indication
+- Filter reset functionality should be keyboard accessible
+
+**Common Issues Solved:**
+- Screen readers not understanding filter relationships
+- Range sliders without accessible value announcements
+- Filter changes not communicated to assistive technologies
+- Users unable to understand which filters are currently active
+- Complex filter interfaces causing navigation confusion
+
+**Implementation Considerations:**
+- Group related filters using `fieldset` with descriptive `legend`
+- Use `aria-live="polite"` for non-urgent filter result updates
+- Provide visual and programmatic indication of active filters
+- Implement clear "Clear all filters" functionality
+- Consider filter persistence across page navigation
+- Ensure mobile filter interfaces are touch-accessible
+
+**Demo Pattern:**
+```
+Line 78: <fieldset><legend>Filter by Price</legend>
+Line 79: <input type="range" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="250">
+Line 80: <output for="price-range">$250</output>
+Line 81: <div aria-live="polite">Showing {{ collection.products_count }} products</div>
+```
+
+**Check in:** `snippets/component-filters-*.liquid`, `sections/main-collection.liquid`
+
+### Pagination Accessibility
+Implement accessible page navigation with proper labeling to ensure users can navigate through product collections efficiently.
+
+**Accessibility Impact:** Pagination is crucial for large product catalogs. Screen reader users need clear page navigation context. Keyboard users require logical tab order through page links. Users with cognitive disabilities benefit from clear current page indicators and navigation options.
+
+**Key Requirements:**
+- Pagination must be wrapped in `<nav>` with descriptive `aria-label`
+- Current page should be indicated with `aria-current="page"`
+- Previous/Next links need descriptive `aria-label` attributes
+- Page numbers should be clearly distinguishable from navigation
+- Skip to first/last page options for long pagination lists
+- Clear indication of total pages and current position
+
+**Common Issues Solved:**
+- Screen readers not identifying pagination controls
+- Unclear current page indication for assistive technologies
+- Confusing navigation for users with cognitive disabilities
+- Keyboard navigation difficulties through page numbers
+- Lack of context about total pages or current position
+
+**Implementation Considerations:**
+- Use semantic `<nav>` element with proper labeling
+- Provide context like "Page 2 of 15" for screen readers
+- Implement keyboard shortcuts for power users (Ctrl+arrows)
+- Consider infinite scroll with accessible load more buttons
+- Ensure pagination works with browser back/forward buttons
+- Provide jump-to-page functionality for long lists
+
+**Demo Pattern:**
+```
+Line 92: <nav aria-label="Pagination navigation">
+Line 93: <a href="..." aria-label="Go to previous page">← Previous</a>
+Line 94: <a href="..." aria-current="page">2</a>
+Line 95: <a href="..." aria-label="Go to next page">Next →</a>
+```
+
+**Check in:** `snippets/component-pagination.liquid`
+
+## E-commerce Specific Accessibility
+
+### Product Comparison
+Make product comparison tables accessible to help customers make informed purchasing decisions regardless of their abilities.
+
+**Accessibility Impact:** Product comparison is crucial for e-commerce conversion. Screen reader users need proper table structure to understand product relationships. Users with cognitive disabilities benefit from clear comparison layouts. Keyboard users require easy navigation through comparison data.
+
+**Key Requirements:**
+- Use semantic `<table>` elements with proper headers
+- Provide descriptive `<caption>` explaining comparison purpose
+- Use `<th scope="col">` for product names and `<th scope="row">` for features
+- Include summary information for complex comparisons
+- Ensure comparison controls are keyboard accessible
+- Provide alternative text for comparison charts or graphs
+
+**Common Issues Solved:**
+- Screen readers unable to understand product relationships
+- Complex comparison data without proper structure
+- Visual-only comparison indicators without text alternatives
+- Keyboard navigation difficulties through comparison tables
+- Unclear comparison criteria for users with cognitive disabilities
+
+**Implementation Considerations:**
+- Use `<caption>` to describe what's being compared
+- Implement proper header associations with `scope` attributes
+- Consider providing comparison summaries for complex data
+- Ensure comparison controls work with keyboard navigation
+- Add "Compare" button states with proper ARIA attributes
+- Provide easy removal of products from comparison
+
+**Demo Pattern:**
+```
+Line 108: <table role="table" aria-label="Product comparison">
+Line 109: <caption>Compare {{ products.size }} selected products</caption>
+Line 110: <thead><tr><th scope="col">Feature</th><th scope="col">{{ product.title }}</th></tr></thead>
+Line 111: <tbody><tr><th scope="row">Price</th><td>{{ product.price | money }}</td></tr></tbody>
+```
+
+**Check in:** `sections/product-comparison.liquid`
+
+### Product Reviews and Ratings
+Ensure reviews are accessible to screen readers to help all customers make informed decisions based on social proof.
+
+**Accessibility Impact:** Reviews and ratings are key trust signals in e-commerce. Screen reader users need ratings communicated clearly as text, not just visual stars. Users with cognitive disabilities benefit from clear review structures and helpful/unhelpful voting systems.
+
+**Key Requirements:**
+- Star ratings must have text equivalents using `aria-label`
+- Use `role="img"` for star rating displays with descriptive labels
+- Review content should be properly structured with headings
+- Voting buttons (helpful/unhelpful) need clear labeling
+- Review pagination should follow accessibility guidelines
+- Review forms must be fully accessible with proper error handling
+
+**Common Issues Solved:**
+- Star ratings invisible to screen readers
+- Review content without proper structure or navigation
+- Voting mechanisms without clear purpose indication
+- Review filtering controls inaccessible to keyboard users
+- Unclear reviewer information and verification status
+
+**Implementation Considerations:**
+- Always provide text alternatives for visual ratings
+- Structure reviews with proper headings and landmarks
+- Implement accessible review filtering and sorting
+- Ensure review submission forms follow form accessibility guidelines
+- Consider review helpfulness indicators for screen readers
+- Provide clear reviewer verification and date information
+
+**Demo Pattern:**
+```
+Line 125: <div role="img" aria-label="4.5 out of 5 stars">★★★★☆</div>
+Line 126: <span class="sr-only">Rated 4.5 out of 5 stars based on 127 reviews</span>
+Line 127: <section aria-labelledby="reviews-heading">
+Line 128: <h3 id="reviews-heading">Customer Reviews</h3>
+```
+
+### Wishlist and Favorites
+Make wishlist functionality accessible to allow all customers to save products for future consideration.
+
+**Accessibility Impact:** Wishlists enhance customer retention and conversion. Screen reader users need clear indication of wishlist status. Users with motor disabilities require easy toggle functionality. Wishlist management should be accessible across devices.
+
+**Key Requirements:**
+- Wishlist buttons must use `aria-pressed` to indicate current state
+- Button labels should clearly describe the action (add/remove)
+- State changes must be announced to screen readers
+- Wishlist page should be fully navigable by keyboard
+- Wishlist items need proper removal and editing functionality
+- Cross-device wishlist sync should maintain accessibility
+
+**Common Issues Solved:**
+- Unclear wishlist button states for screen readers
+- Wishlist changes not announced to assistive technologies
+- Difficult wishlist management for keyboard users
+- Visual-only indicators without programmatic equivalents
+- Inaccessible wishlist sharing functionality
+
+**Implementation Considerations:**
+- Use `aria-pressed` for toggle state indication
+- Provide immediate feedback for wishlist actions
+- Implement accessible wishlist management interfaces
+- Consider wishlist organization features (folders, tags)
+- Ensure wishlist sharing is accessible
+- Provide clear empty wishlist states
+
+**Demo Pattern:**
+```
+Line 142: <button aria-pressed="false" aria-label="Add {{ product.title }} to wishlist">
+Line 143: <span aria-hidden="true">♡</span> Add to Wishlist
+Line 144: <span class="sr-only" aria-live="polite">Added to wishlist</span>
+```
+
+### Quantity Selectors
+Implement accessible quantity controls to ensure all customers can easily specify desired product quantities.
+
+**Accessibility Impact:** Quantity selection is essential for cart functionality. Screen reader users need clear quantity controls with proper labeling. Users with motor disabilities require easy increment/decrement options. Stock availability should be clearly communicated.
+
+**Key Requirements:**
+- Quantity inputs must have associated labels
+- Increment/decrement buttons need descriptive `aria-label` attributes
+- Stock information should be programmatically associated with quantity controls
+- Quantity limits must be clearly communicated
+- Error states for invalid quantities need proper announcement
+- Bulk quantity options should be keyboard accessible
+
+**Common Issues Solved:**
+- Unlabeled quantity input fields
+- Increment/decrement buttons without clear purpose
+- Stock limitations not communicated to screen readers
+- Quantity errors without accessible error messages
+- Complex quantity selectors without keyboard support
+
+**Implementation Considerations:**
+- Associate quantity controls with clear labels and descriptions
+- Use `aria-controls` to link increment/decrement buttons to inputs
+- Implement proper validation with accessible error messages
+- Consider bulk quantity selection for wholesale customers
+- Provide stock availability context with `aria-describedby`
+- Ensure quantity changes update cart totals accessibly
+
+**Demo Pattern:**
+```
+Line 158: <label for="quantity-{{ product.id }}">Quantity</label>
+Line 159: <button aria-label="Decrease quantity" aria-controls="quantity-{{ product.id }}">-</button>
+Line 160: <input id="quantity-{{ product.id }}" type="number" min="1" aria-describedby="stock-info">
+Line 161: <button aria-label="Increase quantity" aria-controls="quantity-{{ product.id }}">+</button>
+Line 162: <div id="stock-info">{{ product.selected_variant.inventory_quantity }} in stock</div>
+```
+
+## Checkout Accessibility
+
+### Multi-step Checkout Process
+Ensure checkout steps are clearly identified and navigable to reduce cart abandonment and support all users through the purchase process.
+
+**Accessibility Impact:** Checkout is the most critical conversion point in e-commerce. Screen reader users need clear progress indication and step navigation. Users with cognitive disabilities benefit from clear process visualization. Anxiety around complex checkout processes can be reduced with proper accessibility.
+
+**Key Requirements:**
+- Progress indicators must be programmatically accessible with proper roles
+- Current step should be clearly indicated with `aria-current="step"`
+- Each step must be navigable and identifiable by screen readers
+- Step completion status should be announced to assistive technologies
+- Back/forward navigation between steps must be keyboard accessible
+- Error prevention and recovery at each step
+
+**Common Issues Solved:**
+- Users losing track of checkout progress
+- Unclear step navigation causing abandonment
+- Progress indicators invisible to screen readers
+- Inability to return to previous steps to make corrections
+- Lack of confirmation before final submission
+
+**Implementation Considerations:**
+- Use ordered lists with proper ARIA labels for progress tracking
+- Implement breadcrumb-style navigation for step jumping
+- Provide clear step completion indicators
+- Allow editing of previous steps without losing current progress
+- Include estimated completion time for complex checkouts
+- Offer guest checkout options with minimal barriers
+
+**Demo Pattern:**
+```
+Line 175: <ol role="list" aria-label="Checkout progress">
+Line 176: <li aria-current="step">1. Shipping Information</li>
+Line 177: <li>2. Payment Method</li>
+Line 178: <li>3. Order Review</li>
+Line 179: <div role="status" aria-live="polite">Step 1 of 3: Shipping Information</div>
+```
+
+### Address Forms
+Make address entry accessible with proper labeling to ensure smooth delivery information collection.
+
+**Accessibility Impact:** Address forms are complex but essential for e-commerce fulfillment. Screen reader users need clear field labeling and relationship understanding. International customers require flexible address formats. Autocomplete features must work with assistive technologies.
+
+**Key Requirements:**
+- All address fields must have clear, descriptive labels
+- Required fields should be clearly marked and announced
+- Field relationships should be grouped with `fieldset` and `legend`
+- Address validation errors must be accessible and actionable
+- International address formats should be supported
+- Autocomplete attributes should follow standard conventions
+
+**Common Issues Solved:**
+- Unclear address field requirements and formats
+- Address validation errors without clear guidance
+- Inflexible address formats for international customers
+- Autocomplete features incompatible with screen readers
+- Complex address entry without proper grouping
+
+**Implementation Considerations:**
+- Use appropriate `autocomplete` attributes for address fields
+- Implement progressive enhancement for address validation
+- Support multiple address formats based on country selection
+- Provide clear error messages with correction guidance
+- Consider address lookup services with accessible interfaces
+- Allow saved addresses with accessible management
+
+**Demo Pattern:**
+```
+Line 192: <fieldset><legend>Shipping Address</legend>
+Line 193: <label for="address1">Street Address <abbr title="required">*</abbr></label>
+Line 194: <input id="address1" required aria-describedby="address-error">
+Line 195: <label for="country">Country</label>
+Line 196: <select id="country" aria-describedby="country-help">
+Line 197: <div id="country-help">Select your country for shipping options</div>
+```
+
+### Payment Form Security
+Ensure payment forms are accessible while maintaining security standards to build customer trust and ensure successful transactions.
+
+**Accessibility Impact:** Payment forms require highest security and accessibility standards. Screen reader users need clear payment field guidance without compromising security. Users with disabilities must be able to complete secure transactions independently. Trust indicators must be accessible.
+
+**Key Requirements:**
+- Payment fields must have clear, specific labels
+- Security features should not interfere with assistive technologies
+- Card validation should provide accessible error feedback
+- Payment methods should be clearly selectable and identifiable
+- Security indicators (SSL, trust badges) must have text alternatives
+- Payment processing status should be announced accessibly
+
+**Common Issues Solved:**
+- Payment security measures blocking assistive technology access
+- Unclear payment field requirements and validation
+- Inaccessible payment method selection interfaces
+- Payment processing without accessible status updates
+- Security information only communicated visually
+
+**Implementation Considerations:**
+- Balance security requirements with accessibility needs
+- Use appropriate `autocomplete` attributes for payment fields
+- Implement accessible card type detection and validation
+- Provide clear payment processing status and confirmation
+- Ensure payment security indicators have text equivalents
+- Support multiple payment methods with equal accessibility
+
+**Demo Pattern:**
+```
+Line 210: <fieldset><legend>Payment Information</legend>
+Line 211: <label for="card-number">Card Number</label>
+Line 212: <input id="card-number" autocomplete="cc-number" aria-describedby="card-help">
+Line 213: <div id="card-help">Enter your 16-digit card number</div>
+Line 214: <div role="alert" aria-live="assertive" id="payment-errors"></div>
+```
+
+## Loading States and Progressive Enhancement
+
+### Skeleton Screens
+Provide accessible loading states to reduce perceived loading time and maintain user engagement during content loading.
+
+**Accessibility Impact:** Loading states prevent user confusion and anxiety during content loading. Screen reader users need to understand that content is loading. Users with slower connections benefit from clear loading indicators. Skeleton screens provide better UX than blank screens.
+
+**Key Requirements:**
+- Loading containers must use `role="status"` for screen reader announcements
+- Skeleton elements should be hidden from screen readers with `aria-hidden="true"`
+- Loading messages must be announced with screen reader friendly text
+- Loading states should respect reduced motion preferences
+- Provide estimated loading times when possible
+- Ensure loading states don't interfere with existing content
+
+**Common Issues Solved:**
+- Users thinking the page is broken during loading
+- Screen readers not announcing loading states
+- Loading animations causing motion sensitivity issues
+- Unclear progress indication for long operations
+- Loading states blocking interaction with loaded content
+
+**Implementation Considerations:**
+- Use `aria-live="polite"` for non-urgent loading announcements
+- Implement skeleton screens that match final content structure
+- Provide loading cancellation options for long operations
+- Consider offline states and connection quality
+- Ensure loading states work without JavaScript
+- Test loading states with various connection speeds
+
+**Demo Pattern:**
+```
+Line 228: <div role="status" aria-label="Loading products">
+Line 229: <div class="skeleton-product-card" aria-hidden="true"></div>
+Line 230: <span class="sr-only">Loading product information, please wait...</span>
+```
+
+### Lazy Loading Images
+Implement accessible image lazy loading to improve performance while maintaining accessibility for all users.
+
+**Accessibility Impact:** Lazy loading improves page performance, especially important for users with limited bandwidth. Screen reader users need proper alt text even for lazy-loaded images. Loading indicators help users understand when images are being fetched.
+
+**Key Requirements:**
+- Lazy-loaded images must maintain proper alt text
+- Loading placeholders should be accessible
+- Image loading status should be communicated to screen readers
+- Fallback behavior required when lazy loading fails
+- Critical images should not be lazy loaded
+- Loading indicators should be dismissible
+
+**Common Issues Solved:**
+- Images loading without accessibility context
+- Missing alt text on lazy-loaded images
+- Users not understanding when images are loading
+- Poor performance on slower connections without proper feedback
+- Lazy loading interfering with screen reader navigation
+
+**Implementation Considerations:**
+- Use `loading="lazy"` attribute with proper fallbacks
+- Maintain alt text in data attributes during loading
+- Provide meaningful loading placeholders
+- Implement intersection observer with accessibility considerations
+- Consider preloading critical above-the-fold images
+- Test with various screen reader and browser combinations
+
+**Demo Pattern:**
+```
+Line 244: <img loading="lazy" src="placeholder.jpg" data-src="product.jpg" 
+Line 245: alt="{{ product.title }}" aria-describedby="loading-status">
+Line 246: <div id="loading-status" class="sr-only" aria-live="polite">Image loading...</div>
+```
+
+### Progress Indicators
+Show progress for long operations to keep users informed and reduce abandonment during extended processes.
+
+**Accessibility Impact:** Progress indicators are crucial for users with disabilities who may need more time to complete tasks. Screen reader users need progress announcements. Visual progress indicators must have programmatic equivalents.
+
+**Key Requirements:**
+- Progress bars must use `role="progressbar"` with proper value attributes
+- Progress updates should be announced to screen readers
+- Provide both percentage and descriptive progress information
+- Allow cancellation of long-running operations
+- Include estimated completion times when possible
+- Progress indicators should be keyboard focusable for status checking
+
+**Common Issues Solved:**
+- Users abandoning long operations without progress feedback
+- Progress information only available visually
+- Unclear progress status for screen reader users
+- No way to cancel or pause long operations
+- Progress indicators without meaningful completion estimates
+
+**Implementation Considerations:**
+- Use `aria-valuenow`, `aria-valuemin`, and `aria-valuemax` for progress bars
+- Implement live region updates for progress announcements
+- Provide both determinate and indeterminate progress indicators
+- Consider progress persistence across page refreshes
+- Include contextual information about what's being processed
+- Test progress indicators with various assistive technologies
+
+**Demo Pattern:**
+```
+Line 260: <div role="progressbar" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100" 
+Line 261: aria-label="Upload progress">
+Line 262: <div class="progress-bar" style="width: 65%"></div>
+Line 263: <span class="sr-only">65% complete</span>
+```
+
+## Mobile and Touch Accessibility
+
+### Touch Target Sizing
+Ensure touch targets meet accessibility standards to support users with motor disabilities and improve mobile usability for all customers.
+
+**Accessibility Impact:** Touch target sizing is critical for users with motor disabilities, tremors, or limited dexterity. Elderly users and users with large fingers benefit from appropriately sized touch targets. Mobile shopping conversion rates improve with accessible touch interfaces.
+
+**Key Requirements:**
+- All interactive elements must be at least 44x44 pixels (iOS) or 48x48 pixels (Android)
+- Touch targets should have adequate spacing between them (minimum 8px)
+- Nested interactive elements should be avoided
+- Touch targets should provide visual and haptic feedback
+- Consider different device orientations and screen sizes
+- Ensure touch targets work with assistive touch technologies
+
+**Common Issues Solved:**
+- Small buttons difficult to tap on mobile devices
+- Accidentally triggering adjacent interactive elements
+- Touch targets too close together causing user frustration
+- Inconsistent touch target sizes across the interface
+- Interactive elements without proper touch feedback
+
+**Implementation Considerations:**
+- Use CSS to ensure minimum touch target sizes across all interactive elements
+- Provide adequate spacing between touch targets
+- Consider thumb reach and one-handed mobile usage patterns
+- Test with various device sizes and orientations
+- Implement proper touch feedback with CSS `:active` states
+- Ensure touch targets scale appropriately with text size adjustments
+
+**Demo Pattern:**
+```
+Line 277: button, .btn, a, input[type="submit"] { min-height: 44px; min-width: 44px; }
+Line 278: .touch-target { padding: 12px; margin: 2px; } /* Ensure spacing */
+```
+
+### Swipe Gestures
+Provide alternatives to swipe-only navigation to ensure all users can access carousel and slider content regardless of their interaction capabilities.
+
+**Accessibility Impact:** Swipe-only navigation excludes users with motor disabilities who cannot perform swipe gestures. Screen reader users need alternative navigation methods. Switch control users require button-based navigation options.
+
+**Key Requirements:**
+- Always provide button alternatives to swipe gestures
+- Swipe areas should be properly labeled for screen readers
+- Keyboard navigation must be available for carousel content
+- Auto-advancing carousels should be pausable
+- Provide clear indication of current position and total items
+- Support multiple navigation methods simultaneously
+
+**Common Issues Solved:**
+- Content accessible only through swipe gestures
+- Carousels without keyboard navigation support
+- Auto-advancing content causing motion sensitivity issues
+- Unclear current position in carousel content
+- Swipe gestures not working with assistive technologies
+
+**Implementation Considerations:**
+- Always include previous/next buttons alongside swipe functionality
+- Use ARIA live regions to announce carousel changes
+- Implement keyboard arrow key navigation for carousel items
+- Provide pagination indicators with proper ARIA labeling
+- Consider touch, mouse, and keyboard interaction patterns
+- Test carousel functionality with various assistive technologies
+
+**Demo Pattern:**
+```
+Line 292: <div class="carousel" role="region" aria-label="Product images">
+Line 293: <button aria-label="Previous image">‹</button>
+Line 294: <div class="carousel-track" aria-live="polite">
+Line 295: <button aria-label="Next image">›</button>
+Line 296: <div class="sr-only">Swipe left or right to navigate images</div>
+```
+
+## Error Handling and Validation
+
+### Form Validation Messages
+Provide clear, accessible error messages.
+
+**Demo Pattern:**
+```
+Line 310: <input aria-invalid="true" aria-describedby="email-error">
+Line 311: <div id="email-error" role="alert" class="error-message">
+Line 312: Please enter a valid email address
+Line 313: <div aria-live="polite">Error: Email format is incorrect</div>
+```
+
+### Network Error Handling
+Handle connection issues accessibly.
+
+**Demo Pattern:**
+```
+Line 327: <div role="alert" aria-live="assertive" class="network-error">
+Line 328: <h2>Connection Error</h2>
+Line 329: <p>Unable to load content. Please check your connection and try again.</p>
+Line 330: <button onclick="retry()">Retry</button>
+```
+
+### Cart Error States
+Handle cart operations with clear feedback.
+
+**Demo Pattern:**
+```
+Line 344: <div role="status" aria-live="polite" id="cart-feedback">
+Line 345: {% if cart.item_count == 0 %}Your cart is empty{% endif %}
+Line 346: <div role="alert" aria-live="assertive" id="cart-errors">
+Line 347: Item out of stock and removed from cart
+```
+
+## Internationalization and Accessibility
+
+### Right-to-Left Language Support
+Support RTL languages accessibly.
+
+**Demo Pattern:**
+```
+Line 361: <html dir="{{ localization.country.currency.iso_code | rtl_check }}" lang="{{ request.locale.iso_code }}">
+Line 362: [dir="rtl"] .product-grid { direction: rtl; text-align: right; }
+Line 363: [dir="rtl"] .breadcrumb::before { content: "‹"; }
+```
+
+### Currency and Number Formatting
+Format numbers accessibly for different locales.
+
+**Demo Pattern:**
+```
+Line 377: <span aria-label="{{ product.price | money | remove: currency_symbol }} {{ currency_name }}">
+Line 378: {{ product.price | money }}
+Line 379: <span class="sr-only">Price in {{ localization.country.currency.name }}</span>
+```
+
+## Performance and Accessibility
+
+### Critical CSS for Accessibility
+Ensure accessibility styles load first.
+
+**Demo Pattern:**
+```
+Line 393: /* Critical accessibility CSS */
+Line 394: .sr-only { clip: rect(0,0,0,0); position: absolute; }
+Line 395: *:focus-visible { outline: 2px solid #0066cc; }
+Line 396: [aria-hidden="true"] { display: none !important; }
+```
+
+### Reduced Motion Performance
+Optimize animations for accessibility.
+
+**Demo Pattern:**
+```
+Line 410: @media (prefers-reduced-motion: reduce) {
+Line 411: * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+Line 412: .parallax, .auto-carousel { transform: none !important; }
+```
+
+## Advanced Testing Strategies
+
+### Automated Accessibility Testing
+Set up comprehensive automated testing.
+
+**Demo Commands:**
+```
+Line 426: # CI/CD Integration
+Line 427: npm run test:a11y
+Line 428: axe-cli --tags wcag2a,wcag2aa --exclude "#third-party-widget"
+Line 429: pa11y-ci --sitemap https://store.com/sitemap.xml
+```
+
+### Manual Testing Protocols
+Detailed manual testing procedures.
+
+**Testing Scenarios:**
+- [ ] **Keyboard-only navigation** - Unplug mouse, navigate entire site
+- [ ] **Screen reader testing** - NVDA (Windows), JAWS (Windows), VoiceOver (Mac)
+- [ ] **Voice control** - Dragon NaturallySpeaking, Voice Control (Mac)
+- [ ] **High contrast mode** - Windows High Contrast, browser extensions
+- [ ] **Zoom testing** - 200%, 400% zoom levels
+- [ ] **Mobile screen reader** - TalkBack (Android), VoiceOver (iOS)
+
+### Accessibility Monitoring
+Set up ongoing accessibility monitoring.
+
+**Demo Pattern:**
+```
+Line 450: // Continuous monitoring
+Line 451: if (window.location.hostname !== 'localhost') {
+Line 452: import('./accessibility-monitor.js');
+Line 453: window.a11yMonitor.track('page-load', { url: window.location.href });
+```
+
+## Team Integration and Workflow
+
+### Design System Integration
+Ensure accessibility in design components.
+
+**Demo Pattern:**
+```
+Line 467: /* Component accessibility requirements */
+Line 468: .btn { min-height: 44px; min-width: 44px; position: relative; }
+Line 469: .btn[aria-pressed="true"]::after { content: "selected"; position: absolute; }
+Line 470: .card:focus-within { outline: 2px solid #0066cc; }
+```
+
+### Code Review Checklist
+Accessibility items for code reviews.
+
+**Review Items:**
+- [ ] All images have appropriate alt text
+- [ ] Form inputs have associated labels
+- [ ] Interactive elements are keyboard accessible
+- [ ] Color contrast meets WCAG standards
+- [ ] ARIA attributes used correctly
+- [ ] Focus management implemented for modals
+- [ ] Error messages are announced to screen readers
+- [ ] Loading states have proper announcements
+
+### Documentation Standards
+Document accessibility features for maintenance.
+
+**Demo Pattern:**
+```
+Line 492: /**
+Line 493: * @accessibility
+Line 494: * - Supports keyboard navigation (Enter, Space, Arrow keys)
+Line 495: * - Announces state changes to screen readers
+Line 496: * - Maintains focus management in modal context
+Line 497: * - Respects prefers-reduced-motion setting
+Line 498: */
+```
+
+## Compliance and Legal Protection
+
+### WCAG 2.1 AA Success Criteria Mapping
+Map implementation to specific WCAG criteria.
+
+**Success Criteria Coverage:**
+- **1.1.1** Non-text Content - Alt text implementation
+- **1.3.1** Info and Relationships - Semantic HTML, ARIA
+- **1.4.3** Contrast (Minimum) - Color contrast standards
+- **2.1.1** Keyboard - Full keyboard accessibility
+- **2.4.1** Bypass Blocks - Skip links
+- **2.4.6** Headings and Labels - Proper heading hierarchy
+- **3.2.2** On Input - No unexpected context changes
+- **4.1.2** Name, Role, Value - Proper ARIA implementation
+
+### Accessibility Statement Template
+Provide transparency about accessibility efforts.
+
+**Demo Pattern:**
+```
+Line 522: <div class="accessibility-statement">
+Line 523: <h2>Accessibility Statement</h2>
+Line 524: <p>We are committed to ensuring digital accessibility for people with disabilities.</p>
+Line 525: <p>We continually improve the user experience and apply relevant accessibility standards.</p>
+Line 526: <p>Contact us at accessibility@store.com for assistance.</p>
+```
+
+### Legal Risk Mitigation
+Steps to reduce legal accessibility risks.
+
+**Risk Mitigation Strategies:**
+1. **Regular audits** - Monthly automated scans, quarterly manual reviews
+2. **User feedback** - Accessibility feedback form, user testing sessions  
+3. **Staff training** - Accessibility awareness training for all team members
+4. **Documentation** - Maintain records of accessibility improvements
+5. **Third-party compliance** - Ensure all plugins/widgets meet standards
+6. **Incident response** - Process for handling accessibility complaints
+
+Remember: Accessibility is not a one-time implementation but an ongoing commitment to inclusive design.

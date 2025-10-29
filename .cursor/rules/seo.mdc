@@ -1,0 +1,722 @@
+---
+description: Comprehensive SEO standards and best practices for Shopify theme development to maximize search engine visibility and performance
+globs: *.liquid
+alwaysApply: false
+---
+# SEO Standards for Shopify Themes
+
+## Meta Tags and Page Titles
+
+### Page Title Optimization
+Always craft unique, descriptive titles under 60 characters with primary keywords.
+
+**Pattern for Products:**
+```liquid
+<title>
+  {%- if product.title -%}
+    {{ product.title | strip_html | truncate: 50 }} | {{ shop.name }}
+  {%- else -%}
+    {{ page_title }} | {{ shop.name }}
+  {%- endif -%}
+</title>
+```
+
+**Pattern for Collections:**
+```liquid
+<title>
+  {%- if collection.title -%}
+    {{ collection.title | strip_html }} - {{ collection.products_count }} Products | {{ shop.name }}
+  {%- else -%}
+    {{ page_title }} | {{ shop.name }}
+  {%- endif -%}
+</title>
+```
+
+**Pattern for Blog Posts:**
+```liquid
+<title>
+  {%- if article.title -%}
+    {{ article.title | strip_html | truncate: 50 }} | {{ blog.title }} | {{ shop.name }}
+  {%- else -%}
+    {{ page_title }} | {{ shop.name }}
+  {%- endif -%}
+</title>
+```
+
+### Meta Description Implementation
+Write compelling meta descriptions under 160 characters that include relevant keywords.
+
+**Pattern for Products:**
+```liquid
+<meta name="description" content="
+  {%- if product.description != blank -%}
+    {{ product.description | strip_html | strip | truncate: 155 }}
+  {%- elsif product.title -%}
+    {{ product.title | strip_html }} - Available at {{ shop.name }}. {{ product.price | money }} with fast shipping.
+  {%- else -%}
+    {{ shop.description | default: shop.name }}
+  {%- endif -%}
+">
+```
+
+**Pattern for Collections:**
+```liquid
+<meta name="description" content="
+  {%- if collection.description != blank -%}
+    {{ collection.description | strip_html | strip | truncate: 155 }}
+  {%- else -%}
+    Shop {{ collection.title | strip_html }} at {{ shop.name }}. {{ collection.products_count }} products available with fast shipping.
+  {%- endif -%}
+">
+```
+
+**Check in:** `layout/theme.liquid`, `templates/*.liquid`
+
+## Canonical URLs
+
+### Canonical Tag Implementation
+Always include canonical URLs to prevent duplicate content issues.
+
+**Pattern:**
+```liquid
+{%- if canonical_url -%}
+  <link rel="canonical" href="{{ canonical_url }}">
+{%- endif -%}
+```
+
+**For Paginated Collections:**
+```liquid
+{%- if collection.url and current_page > 1 -%}
+  <link rel="canonical" href="{{ collection.url }}">
+{%- elsif collection.url -%}
+  <link rel="canonical" href="{{ collection.url }}">
+{%- endif -%}
+```
+
+**For Product Variants:**
+```liquid
+{%- if product.selected_or_first_available_variant -%}
+  <link rel="canonical" href="{{ shop.url }}{{ product.url }}">
+{%- endif -%}
+```
+
+## Open Graph and Social Media Tags
+
+### Open Graph Implementation
+Implement comprehensive Open Graph tags for social media sharing.
+
+**Pattern:**
+```liquid
+<!-- Open Graph Meta Tags -->
+<meta property="og:site_name" content="{{ shop.name }}">
+<meta property="og:url" content="{{ canonical_url | default: request.origin }}{{ request.path }}">
+<meta property="og:title" content="
+  {%- if page_title -%}
+    {{ page_title | strip_html | truncate: 60 }}
+  {%- else -%}
+    {{ shop.name }}
+  {%- endif -%}
+">
+<meta property="og:type" content="
+  {%- if template contains 'product' -%}product
+  {%- elsif template contains 'article' -%}article
+  {%- else -%}website
+  {%- endif -%}
+">
+<meta property="og:description" content="
+  {%- if product.description != blank -%}
+    {{ product.description | strip_html | strip | truncate: 155 }}
+  {%- elsif collection.description != blank -%}
+    {{ collection.description | strip_html | strip | truncate: 155 }}
+  {%- elsif article.summary != blank -%}
+    {{ article.summary | strip_html | strip | truncate: 155 }}
+  {%- else -%}
+    {{ shop.description | default: shop.name }}
+  {%- endif -%}
+">
+{%- if product.featured_media -%}
+  <meta property="og:image" content="http:{{ product.featured_media | image_url: width: 1200 }}">
+  <meta property="og:image:secure_url" content="https:{{ product.featured_media | image_url: width: 1200 }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="1200">
+{%- elsif collection.featured_image -%}
+  <meta property="og:image" content="http:{{ collection.featured_image | image_url: width: 1200 }}">
+  <meta property="og:image:secure_url" content="https:{{ collection.featured_image | image_url: width: 1200 }}">
+{%- elsif article.image -%}
+  <meta property="og:image" content="http:{{ article.image | image_url: width: 1200 }}">
+  <meta property="og:image:secure_url" content="https:{{ article.image | image_url: width: 1200 }}">
+{%- else -%}
+  <meta property="og:image" content="https:{{ 'logo.png' | asset_url }}">
+{%- endif -%}
+```
+
+### Twitter Cards Implementation
+**Pattern:**
+```liquid
+<!-- Twitter Card Meta Tags -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="
+  {%- if page_title -%}
+    {{ page_title | strip_html | truncate: 60 }}
+  {%- else -%}
+    {{ shop.name }}
+  {%- endif -%}
+">
+<meta name="twitter:description" content="
+  {%- if product.description != blank -%}
+    {{ product.description | strip_html | strip | truncate: 155 }}
+  {%- elsif collection.description != blank -%}
+    {{ collection.description | strip_html | strip | truncate: 155 }}
+  {%- else -%}
+    {{ shop.description | default: shop.name }}
+  {%- endif -%}
+">
+{%- if product.featured_media -%}
+  <meta name="twitter:image" content="https:{{ product.featured_media | image_url: width: 1200 }}">
+{%- elsif collection.featured_image -%}
+  <meta name="twitter:image" content="https:{{ collection.featured_image | image_url: width: 1200 }}">
+{%- endif -%}
+```
+
+## Structured Data and Schema Markup
+
+### Product Schema Implementation
+Implement comprehensive product schema for rich snippets.
+
+**Pattern:**
+```liquid
+{%- if template contains 'product' -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": {{ product.title | json }},
+  "description": {{ product.description | strip_html | strip | json }},
+  "url": {{ shop.url | append: product.url | json }},
+  "sku": {{ product.selected_or_first_available_variant.sku | json }},
+  "gtin": {{ product.selected_or_first_available_variant.barcode | json }},
+  "brand": {
+    "@type": "Brand",
+    "name": {{ product.vendor | json }}
+  },
+  {%- if product.featured_media -%}
+  "image": [
+    {%- for media in product.media limit: 5 -%}
+      {{ media | image_url: width: 1200 | json }}
+      {%- unless forloop.last -%},{%- endunless -%}
+    {%- endfor -%}
+  ],
+  {%- endif -%}
+  "offers": {
+    "@type": "Offer",
+    "url": {{ shop.url | append: product.url | json }},
+    "priceCurrency": {{ cart.currency.iso_code | json }},
+    "price": {{ product.selected_or_first_available_variant.price | divided_by: 100.0 | json }},
+    "availability": "
+      {%- if product.selected_or_first_available_variant.available -%}
+        https://schema.org/InStock
+      {%- else -%}
+        https://schema.org/OutOfStock
+      {%- endif -%}
+    ",
+    "seller": {
+      "@type": "Organization",
+      "name": {{ shop.name | json }}
+    }
+  }
+  {%- if product.metafields.reviews.rating.value -%}
+  ,
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": {{ product.metafields.reviews.rating.value }},
+    "reviewCount": {{ product.metafields.reviews.rating_count.value | default: 1 }}
+  }
+  {%- endif -%}
+}
+</script>
+{%- endif -%}
+```
+
+### Organization Schema
+**Pattern:**
+```liquid
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": {{ shop.name | json }},
+  "url": {{ shop.url | json }},
+  {%- if shop.description -%}
+  "description": {{ shop.description | json }},
+  {%- endif -%}
+  "logo": {
+    "@type": "ImageObject",
+    "url": {{ 'logo.png' | asset_url | json }}
+  },
+  "sameAs": [
+    {%- if settings.social_facebook_link != blank -%}
+      {{ settings.social_facebook_link | json }}
+      {%- if settings.social_instagram_link != blank or settings.social_twitter_link != blank -%},{%- endif -%}
+    {%- endif -%}
+    {%- if settings.social_instagram_link != blank -%}
+      {{ settings.social_instagram_link | json }}
+      {%- if settings.social_twitter_link != blank -%},{%- endif -%}
+    {%- endif -%}
+    {%- if settings.social_twitter_link != blank -%}
+      {{ settings.social_twitter_link | json }}
+    {%- endif -%}
+  ]
+}
+</script>
+```
+
+### Breadcrumb Schema
+**Pattern:**
+```liquid
+{%- unless template == 'index' -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": {{ shop.url | json }}
+    }
+    {%- if collection -%}
+    ,{
+      "@type": "ListItem",
+      "position": 2,
+      "name": {{ collection.title | json }},
+      "item": {{ shop.url | append: collection.url | json }}
+    }
+    {%- endif -%}
+    {%- if product -%}
+    ,{
+      "@type": "ListItem",
+      "position": {% if collection %}3{% else %}2{% endif %},
+      "name": {{ product.title | json }},
+      "item": {{ shop.url | append: product.url | json }}
+    }
+    {%- elsif page -%}
+    ,{
+      "@type": "ListItem",
+      "position": 2,
+      "name": {{ page.title | json }},
+      "item": {{ shop.url | append: page.url | json }}
+    }
+    {%- endif -%}
+  ]
+}
+</script>
+{%- endunless -%}
+```
+
+## Image Optimization for SEO
+
+### Alt Text Standards
+Always provide meaningful alt text for images that convey information.
+
+**Pattern for Product Images:**
+```liquid
+{{ product.featured_media | image_tag: 
+  alt: product.featured_media.alt | default: product.title,
+  loading: 'lazy',
+  width: 800,
+  height: 800
+}}
+```
+
+**Pattern for Collection Images:**
+```liquid
+{{ collection.featured_image | image_tag: 
+  alt: collection.featured_image.alt | default: collection.title | append: ' collection',
+  loading: 'lazy'
+}}
+```
+
+### Image File Naming
+Use descriptive, keyword-rich file names for better image SEO.
+
+**Good Examples:**
+- `blue-cotton-t-shirt-front-view.jpg`
+- `leather-crossbody-bag-brown.jpg`
+- `organic-coffee-beans-arabica.jpg`
+
+**Bad Examples:**
+- `IMG_1234.jpg`
+- `product1.jpg`
+- `image.png`
+
+## URL Structure Optimization
+
+### Clean URL Patterns
+Use descriptive URLs that include relevant keywords.
+
+**Product URLs:**
+```
+/products/eco-friendly-water-bottle
+/products/organic-cotton-t-shirt-blue
+/products/handmade-leather-wallet
+```
+
+**Collection URLs:**
+```
+/collections/sustainable-clothing
+/collections/kitchen-accessories
+/collections/outdoor-gear
+```
+
+**Blog URLs:**
+```
+/blogs/news/how-to-choose-sustainable-clothing
+/blogs/guides/kitchen-organization-tips
+```
+
+### Handle Optimization
+Ensure handles are SEO-friendly when creating products and collections.
+
+**Pattern in Admin:**
+```liquid
+{%- assign optimized_handle = product.title | handleize -%}
+{%- if optimized_handle != product.handle -%}
+  <!-- Consider updating handle to: {{ optimized_handle }} -->
+{%- endif -%}
+```
+
+## Internal Linking Strategy
+
+### Related Products Linking
+Implement strategic internal linking for related products.
+
+**Pattern:**
+```liquid
+{%- if recommendations.products_count > 0 -%}
+  <section class="related-products" aria-labelledby="related-heading">
+    <h2 id="related-heading">You might also like</h2>
+    <div class="product-grid">
+      {%- for product in recommendations.products limit: 4 -%}
+        <a href="{{ product.url }}" class="product-card" title="View {{ product.title }}">
+          {{ product.featured_media | image_tag: 
+            alt: product.title,
+            loading: 'lazy',
+            width: 300
+          }}
+          <h3>{{ product.title }}</h3>
+          <p class="price">{{ product.price | money }}</p>
+        </a>
+      {%- endfor -%}
+    </div>
+  </section>
+{%- endif -%}
+```
+
+### Collection Navigation
+Implement breadcrumb navigation for better internal linking.
+
+**Pattern:**
+```liquid
+{%- unless template == 'index' -%}
+<nav aria-label="Breadcrumb" class="breadcrumb">
+  <ol>
+    <li><a href="/">Home</a></li>
+    {%- if collection -%}
+      <li><a href="{{ collection.url }}">{{ collection.title }}</a></li>
+    {%- endif -%}
+    {%- if product -%}
+      <li aria-current="page">{{ product.title | truncate: 50 }}</li>
+    {%- elsif page -%}
+      <li aria-current="page">{{ page.title }}</li>
+    {%- endif -%}
+  </ol>
+</nav>
+{%- endunless -%}
+```
+
+## Page Speed Optimization
+
+### Critical CSS Implementation
+Inline critical CSS for above-the-fold content to improve loading speed.
+
+**Pattern:**
+```liquid
+<style>
+  /* Critical CSS for above-the-fold content */
+  .header { /* styles */ }
+  .hero-section { /* styles */ }
+  .product-form { /* styles */ }
+</style>
+
+<!-- Non-critical CSS -->
+<link rel="stylesheet" href="{{ 'theme.css' | asset_url }}" media="print" onload="this.media='all'">
+```
+
+### Image Lazy Loading
+Implement proper lazy loading for images below the fold.
+
+**Pattern:**
+```liquid
+{%- for product in collection.products -%}
+  {{ product.featured_media | image_tag: 
+    loading: 'lazy',
+    alt: product.title,
+    width: 400,
+    height: 400
+  }}
+{%- endfor -%}
+```
+
+### Preload Critical Resources
+Preload important resources for faster rendering.
+
+**Pattern:**
+```liquid
+<!-- Preload critical fonts -->
+<link rel="preload" href="{{ 'font.woff2' | asset_url }}" as="font" type="font/woff2" crossorigin>
+
+<!-- Preload hero image -->
+{%- if section.settings.hero_image -%}
+  <link rel="preload" href="{{ section.settings.hero_image | image_url: width: 1920 }}" as="image">
+{%- endif -%}
+```
+
+## Mobile SEO Optimization
+
+### Viewport Meta Tag
+Always include proper viewport meta tag for mobile optimization.
+
+**Pattern:**
+```liquid
+<meta name="viewport" content="width=device-width,initial-scale=1">
+```
+
+### Mobile-First Design
+Ensure responsive design with mobile-first approach.
+
+**CSS Pattern:**
+```css
+/* Mobile first */
+.product-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+/* Tablet and up */
+@media (min-width: 768px) {
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .product-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+```
+
+## Content Optimization
+
+### Product Description SEO
+Write unique, detailed product descriptions with natural keyword integration.
+
+**Pattern:**
+```liquid
+{%- if product.description != blank -%}
+  <div class="product-description" itemprop="description">
+    {{ product.description }}
+  </div>
+{%- else -%}
+  <div class="product-description">
+    <p>{{ product.title }} - Available at {{ shop.name }}. High-quality product with fast shipping and excellent customer service.</p>
+  </div>
+{%- endif -%}
+```
+
+### Collection Description Optimization
+**Pattern:**
+```liquid
+{%- if collection.description != blank -%}
+  <div class="collection-description">
+    {{ collection.description }}
+  </div>
+{%- else -%}
+  <div class="collection-description">
+    <p>Shop our {{ collection.title | downcase }} collection at {{ shop.name }}. {{ collection.products_count }} products available with fast, free shipping.</p>
+  </div>
+{%- endif -%}
+```
+
+## Technical SEO Implementation
+
+### XML Sitemap Optimization
+Ensure proper sitemap generation and submission.
+
+**Check:**
+- `/sitemap.xml` is accessible
+- All important pages are included
+- Regular updates when content changes
+
+### Robots.txt Optimization
+Configure robots.txt for proper crawling.
+
+**Pattern:**
+```
+User-agent: *
+Disallow: /admin
+Disallow: /cart
+Disallow: /orders
+Disallow: /checkouts/
+Disallow: /checkout
+Disallow: /carts
+Disallow: /account
+Allow: /
+
+Sitemap: https://yourstore.myshopify.com/sitemap.xml
+```
+
+### Hreflang Implementation
+For international stores, implement hreflang tags.
+
+**Pattern:**
+```liquid
+{%- if shop.enabled_currencies.size > 1 or localization.available_languages.size > 1 -%}
+  {%- for language in localization.available_languages -%}
+    <link rel="alternate" hreflang="{{ language.iso_code }}" href="{{ canonical_url | default: request.origin }}{{ request.path }}">
+  {%- endfor -%}
+{%- endif -%}
+```
+
+## Performance Monitoring
+
+### Core Web Vitals Optimization
+Monitor and optimize for Core Web Vitals metrics.
+
+**LCP (Largest Contentful Paint):**
+- Optimize hero images with proper sizing
+- Use WebP format when supported
+- Implement critical CSS
+
+**FID (First Input Delay):**
+- Minimize JavaScript execution time
+- Use web workers for heavy computations
+- Optimize third-party scripts
+
+**CLS (Cumulative Layout Shift):**
+- Set explicit dimensions for images
+- Reserve space for dynamic content
+- Use CSS transforms instead of layout changes
+
+### SEO Monitoring Implementation
+**Pattern for Google Analytics:**
+```liquid
+{%- if settings.google_analytics_id != blank -%}
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.google_analytics_id }}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '{{ settings.google_analytics_id }}');
+</script>
+{%- endif -%}
+```
+
+## Local SEO (for Physical Stores)
+
+### Local Business Schema
+**Pattern:**
+```liquid
+{%- if shop.address -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": {{ shop.name | json }},
+  "url": {{ shop.url | json }},
+  "telephone": {{ shop.phone | json }},
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": {{ shop.address.street | json }},
+    "addressLocality": {{ shop.address.city | json }},
+    "addressRegion": {{ shop.address.province | json }},
+    "postalCode": {{ shop.address.zip | json }},
+    "addressCountry": {{ shop.address.country | json }}
+  }
+}
+</script>
+{%- endif -%}
+```
+
+## Error Prevention and Validation
+
+### Common SEO Pitfalls to Avoid
+
+**❌ Don't:**
+- Use duplicate meta descriptions across pages
+- Leave alt text empty for content images
+- Create thin or duplicate content
+- Use generic page titles
+- Ignore mobile optimization
+- Block important pages in robots.txt
+- Use non-descriptive URLs
+
+**✅ Do:**
+- Create unique content for each page
+- Implement proper heading hierarchy (H1 → H2 → H3)
+- Use semantic HTML structure
+- Optimize for page speed
+- Implement structured data
+- Monitor search console regularly
+- Test mobile usability
+
+### SEO Validation Checklist
+
+**On-Page Elements:**
+- [ ] Unique title tags under 60 characters
+- [ ] Meta descriptions under 160 characters
+- [ ] H1 tag present and unique
+- [ ] Proper heading hierarchy
+- [ ] Alt text for all content images
+- [ ] Clean, descriptive URLs
+- [ ] Internal linking implemented
+
+**Technical SEO:**
+- [ ] Canonical URLs implemented
+- [ ] XML sitemap accessible
+- [ ] Robots.txt configured
+- [ ] Page speed optimized
+- [ ] Mobile-friendly design
+- [ ] Structured data implemented
+- [ ] HTTPS enabled
+
+**Content Quality:**
+- [ ] Unique product descriptions
+- [ ] Relevant keyword usage
+- [ ] Proper content length
+- [ ] Related content linking
+- [ ] Fresh, updated content
+
+## Testing and Monitoring Tools
+
+### Essential SEO Tools
+- **Google Search Console**: Monitor search performance
+- **Google PageSpeed Insights**: Test page speed
+- **Rich Results Test**: Validate structured data
+- **Mobile-Friendly Test**: Check mobile optimization
+- **Lighthouse**: Comprehensive performance audit
+
+### Regular SEO Audits
+Conduct monthly SEO audits checking:
+- Page speed performance
+- Broken links and 404 errors
+- Missing meta tags
+- Duplicate content issues
+- Image optimization status
+- Mobile usability problems
+
+**Check in:** All template files, especially `layout/theme.liquid`, `templates/*.liquid`, and section files.
