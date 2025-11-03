@@ -205,12 +205,41 @@ jobs:
         if: steps.bot_check.outputs.skip != 'true'
         run: |
           set -e
-          RULES=$(cat /tmp/rules.json)
-          FILES=$(cat /tmp/files.json)
-          printf '{"rules":%s,"files":%s}' "$RULES" "$FILES" > /tmp/ai_input.json
-          echo "ai_input.json sizes:"
-          echo "rules.json bytes: $(wc -c < /tmp/rules.json)"
-          echo "files.json bytes: $(wc -c < /tmp/files.json)"
+          
+          # Extract only the applicable rules instead of sending all rules
+          # This reduces token usage and improves AI accuracy
+          APPLICABLE_RULE_IDS=$(jq -r '[.files[].applicable_rules[]] | unique | .[]' /tmp/files.json)
+          
+          if [ -z "$APPLICABLE_RULE_IDS" ]; then
+            echo "Warning: No applicable rules found for changed files"
+            echo "This usually means rule frontmatter globs don't match the changed files"
+            FILES=$(cat /tmp/files.json)
+            printf '{"rules":[],"files":%s}' "$FILES" > /tmp/ai_input.json
+          else
+            # Build a filtered rules array with only applicable rules
+            FILTERED_RULES=$(jq --argjson rule_names "$(echo "$APPLICABLE_RULE_IDS" | jq -R -s -c 'split("\n") | map(select(length>0))')" '
+              map(select(.name | sub("\\.mdc$"; "") as $name | $rule_names | index($name)))
+            ' /tmp/rules.json)
+            
+            FILES=$(cat /tmp/files.json)
+            printf '{"rules":%s,"files":%s}' "$FILTERED_RULES" "$FILES" > /tmp/ai_input.json
+            
+            echo "ai_input.json optimization:"
+            echo "Total rules available: $(jq 'length' /tmp/rules.json)"
+            echo "Applicable rules sent to AI: $(echo "$FILTERED_RULES" | jq 'length')"
+            echo "Rule names being checked:"
+            echo "$FILTERED_RULES" | jq -r '.[].name | sub("\\.mdc$"; "")' | sed 's/^/  - /'
+            echo ""
+            echo "Token usage (approximate):"
+            ALL_RULES_SIZE=$(wc -c < /tmp/rules.json)
+            FILTERED_SIZE=$(echo "$FILTERED_RULES" | wc -c)
+            echo "  All rules bytes: $ALL_RULES_SIZE"
+            echo "  Filtered rules bytes: $FILTERED_SIZE"
+            echo "  Files/diffs bytes: $(wc -c < /tmp/files.json)"
+            if [ "$ALL_RULES_SIZE" -gt 0 ]; then
+              echo "  Reduction: $(( 100 - (FILTERED_SIZE * 100 / ALL_RULES_SIZE) ))%"
+            fi
+          fi
 
       - name: Call OpenAI strictly by rules
         if: steps.bot_check.outputs.skip != 'true'
@@ -228,7 +257,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE ADDITIONS made in a commit against coding standards. CRITICAL: You will receive git diffs that show added lines (starting with +) and context. NEVER flag issues in deleted/removed code (lines that were removed are good - they fix problems). Focus EXCLUSIVELY on newly added lines (+ prefix in diffs) and completely IGNORE any removed code. For new files, review all content. For modified files, only review lines starting with + (additions). Check ALL applicable rules from the rules[] array. Rules apply based on: 1) alwaysApply: true in metadata, or 2) file path matching globs patterns in metadata. Look for violations ONLY in newly added code. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@). REMEMBER: Only flag issues in ADDED code (+), never in removed code (-). Output JSON: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown."
+                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE ADDITIONS made in a commit against coding standards. CRITICAL: You will receive git diffs that show added lines (starting with +) and context. NEVER flag issues in deleted/removed code (lines that were removed are good - they fix problems). Focus EXCLUSIVELY on newly added lines (+ prefix in diffs) and completely IGNORE any removed code. For new files, review all content. For modified files, only review lines starting with + (additions). The rules[] array contains ONLY the rules that are applicable to the changed files - you must check ALL of them thoroughly. Each file in files[] has an 'applicable_rules' array listing which rule names apply to that specific file. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation with a quote from the added code if possible, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@ -X,Y +A,B @@). REMEMBER: Only flag issues in ADDED code (+), never in removed code (-). Output valid JSON only: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown, no code blocks, just raw JSON."
                 },
                 { "role":"user", "content": ($content[0] | tostring) }
               ]
