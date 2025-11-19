@@ -1,6 +1,6 @@
 ---
 description: Apply these rules when implementing Server-Side Optimization (SSO) for Shopify stores
-globs: *.liquid, *.js
+globs: **/*.liquid, **/*.js, layout/*.liquid, sections/*.liquid, snippets/*.liquid, assets/*.js
 alwaysApply: false
 ---
 Update this rule if user requested changes to the project requirement, etc.

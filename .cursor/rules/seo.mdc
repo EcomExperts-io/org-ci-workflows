@@ -1,6 +1,6 @@
 ---
 description: Comprehensive SEO standards and best practices for Shopify theme development to maximize search engine visibility and performance
-globs: *.liquid
+globs: **/*.liquid, layout/*.liquid, sections/*.liquid, snippets/*.liquid, templates/*.liquid
 alwaysApply: false
 ---
 # SEO Standards for Shopify Themes
