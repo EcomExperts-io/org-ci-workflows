@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout caller repo
         if: steps.bot_check.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -84,7 +84,7 @@ jobs:
 
       - name: Checkout central rules repo
         if: steps.bot_check.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: EcomExperts-io/org-ci-workflows
           ref: Main
