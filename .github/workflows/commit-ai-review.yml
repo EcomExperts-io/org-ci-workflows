@@ -404,6 +404,7 @@ jobs:
 
       - name: Post review to dashboard API
         if: steps.bot_check.outputs.skip != 'true'
+        continue-on-error: true
         env:
           DASHBOARD_API_URL: https://code-review-dashboard-2622480a772e.herokuapp.com/api/reviews
         run: |
