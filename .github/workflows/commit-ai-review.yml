@@ -75,10 +75,12 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           ACTOR="${GITHUB_ACTOR}"
           BRANCH="${GITHUB_REF_NAME}"
+          AUTHOR_NAME="$(git log -1 --pretty=%an "$SHA")"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "author_name=$AUTHOR_NAME" >> "$GITHUB_OUTPUT"
           # latest commit only
           git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
 
@@ -413,6 +415,7 @@ jobs:
           SHA="${{ steps.info.outputs.sha }}"
           SHORT="${SHA:0:7}"
           ACTOR="${{ steps.info.outputs.actor }}"
+          AUTHOR_NAME="${{ steps.info.outputs.author_name }}"
           REPO="${{ steps.info.outputs.repo }}"
           BRANCH="${{ steps.info.outputs.branch }}"
           REVIEWED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -426,7 +429,7 @@ jobs:
 
           PAYLOAD="$(jq -n \
             --arg developer_handle "$ACTOR" \
-            --arg developer_name "$ACTOR" \
+            --arg developer_name "$AUTHOR_NAME" \
             --arg repo_name "$REPO" \
             --arg commit_sha "$SHA" \
             --arg short_sha "$SHORT" \
