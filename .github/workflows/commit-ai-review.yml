@@ -74,9 +74,11 @@ jobs:
           SHA="${GITHUB_SHA}"
           REPO="${GITHUB_REPOSITORY}"
           ACTOR="${GITHUB_ACTOR}"
+          BRANCH="${GITHUB_REF_NAME}"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           # latest commit only
           git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
 
@@ -257,7 +259,7 @@ jobs:
               messages:[
                 {
                   "role":"system",
-                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE ADDITIONS made in a commit against coding standards. CRITICAL: You will receive git diffs that show added lines (starting with +) and context. NEVER flag issues in deleted/removed code (lines that were removed are good - they fix problems). Focus EXCLUSIVELY on newly added lines (+ prefix in diffs) and completely IGNORE any removed code. For new files, review all content. For modified files, only review lines starting with + (additions). The rules[] array contains ONLY the rules that are applicable to the changed files - you must check ALL of them thoroughly. Each file in files[] has an 'applicable_rules' array listing which rule names apply to that specific file. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation with a quote from the added code if possible, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@ -X,Y +A,B @@). REMEMBER: Only flag issues in ADDED code (+), never in removed code (-). Output valid JSON only: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown, no code blocks, just raw JSON."
+                  "content": "You are a comprehensive code reviewer that evaluates ONLY THE ADDITIONS made in a commit against coding standards. CRITICAL: You will receive git diffs that show added lines (starting with +) and context. NEVER flag issues in deleted/removed code (lines that were removed are good - they fix problems). Focus EXCLUSIVELY on newly added lines (+ prefix in diffs) and completely IGNORE any removed code. For new files, review all content. For modified files, only review lines starting with + (additions). The rules[] array contains ONLY the rules that are applicable to the changed files - you must check ALL of them thoroughly. Each file in files[] has an '\''applicable_rules'\'' array listing which rule names apply to that specific file. For each violation found: use rule_id as the rule filename without .mdc extension (e.g., rules-of-engagement not rules-of-engagement.mdc), provide specific reason explaining the violation with a quote from the added code if possible, include exact path from files[].path, and specify the line number from the diff context (look for line numbers in diff headers like @@ -X,Y +A,B @@). REMEMBER: Only flag issues in ADDED code (+), never in removed code (-). Output valid JSON only: {overall:{summary:string, key_issues:[{rule_id:string, reason:string, path:string, line:number}]}}. No markdown, no code blocks, just raw JSON."
                 },
                 { "role":"user", "content": ($content[0] | tostring) }
               ]
@@ -325,12 +327,22 @@ jobs:
         run: |
           set -e
           COUNT=$(jq -r '(.overall.key_issues // []) | length' /tmp/review.json)
-          if [ "$COUNT" -eq 0 ]; then GRADE="✅ excellent";
-          elif [ "$COUNT" -le 2 ]; then GRADE="👍 good";
-          elif [ "$COUNT" -le 5 ]; then GRADE="⚠️ needs improvement";
-          else GRADE="❌ requires attention"; fi
+          if [ "$COUNT" -eq 0 ]; then
+            GRADE_KEY="excellent"
+            GRADE_LABEL="✅ excellent"
+          elif [ "$COUNT" -le 2 ]; then
+            GRADE_KEY="good"
+            GRADE_LABEL="👍 good"
+          elif [ "$COUNT" -le 5 ]; then
+            GRADE_KEY="needs_improvement"
+            GRADE_LABEL="⚠️ needs improvement"
+          else
+            GRADE_KEY="requires_attention"
+            GRADE_LABEL="❌ requires attention"
+          fi
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
-          echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
+          echo "grade_key=$GRADE_KEY" >> "$GITHUB_OUTPUT"
+          echo "grade_label=$GRADE_LABEL" >> "$GITHUB_OUTPUT"
 
       - name: Prepare Slack messages
         if: steps.bot_check.outputs.skip != 'true'
@@ -343,7 +355,7 @@ jobs:
           REPO="${{ steps.info.outputs.repo }}"
           COMMIT_URL="https://github.com/$REPO/commit/$SHA"
 
-          GRADE="${{ steps.score.outputs.grade }}"
+          GRADE="${{ steps.score.outputs.grade_label }}"
           COUNT="${{ steps.score.outputs.count }}"
 
           # Main message (summary only)
@@ -388,6 +400,70 @@ jobs:
             echo ""
             echo "Thread reply preview:"
             cat /tmp/slack_thread.txt
+          fi
+
+      - name: Post review to dashboard API
+        if: steps.bot_check.outputs.skip != 'true'
+        env:
+          DASHBOARD_API_URL: https://code-review-dashboard-2622480a772e.herokuapp.com/api/reviews
+        run: |
+          set -euo pipefail
+
+          SHA="${{ steps.info.outputs.sha }}"
+          SHORT="${SHA:0:7}"
+          ACTOR="${{ steps.info.outputs.actor }}"
+          REPO="${{ steps.info.outputs.repo }}"
+          BRANCH="${{ steps.info.outputs.branch }}"
+          REVIEWED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          GRADE="${{ steps.score.outputs.grade_key }}"
+          COUNT="${{ steps.score.outputs.count }}"
+          SUMMARY="$(jq -r '.overall.summary // ""' /tmp/review.json)"
+          if [ -z "$SUMMARY" ]; then
+            SUMMARY="Commit review completed"
+          fi
+          ISSUES_JSON="$(jq -c '.overall.key_issues // []' /tmp/review.json)"
+
+          PAYLOAD="$(jq -n \
+            --arg developer_handle "$ACTOR" \
+            --arg developer_name "$ACTOR" \
+            --arg repo_name "$REPO" \
+            --arg commit_sha "$SHA" \
+            --arg short_sha "$SHORT" \
+            --arg branch "$BRANCH" \
+            --arg reviewed_at "$REVIEWED_AT" \
+            --arg grade "$GRADE" \
+            --argjson issue_count "$COUNT" \
+            --arg summary "$SUMMARY" \
+            --argjson detailed_issues_json "$ISSUES_JSON" \
+            '{
+              developer_handle: $developer_handle,
+              developer_name: $developer_name,
+              repo_name: $repo_name,
+              commit_sha: $commit_sha,
+              short_sha: $short_sha,
+              branch: $branch,
+              reviewed_at: $reviewed_at,
+              grade: $grade,
+              issue_count: $issue_count,
+              summary: $summary,
+              detailed_issues_json: $detailed_issues_json
+            }'
+          )"
+
+          echo "Posting review payload to dashboard API..."
+          echo "$PAYLOAD" | jq '.'
+
+          HTTP_CODE="$(curl -sS -o /tmp/dashboard_api_response.json -w "%{http_code}" \
+            -X POST "$DASHBOARD_API_URL" \
+            -H "Content-Type: application/json" \
+            --data "$PAYLOAD")"
+
+          echo "Dashboard API HTTP status: $HTTP_CODE"
+          cat /tmp/dashboard_api_response.json
+
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+            echo "Dashboard API returned non-success status"
+            exit 1
           fi
 
       - name: Post main message to Slack
