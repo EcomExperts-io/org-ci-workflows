@@ -24,16 +24,21 @@ jobs:
   review-latest-commit:
     runs-on: ubuntu-latest
     steps:
-      - name: Check if Shopify bot commit
+      - name: Check if workflow should skip
         id: bot_check
         run: |
           ACTOR="${{ github.actor }}"
+          BRANCH="${{ github.ref_name }}"
+
           if [ "$ACTOR" = "shopify[bot]" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Skipping review for Shopify bot commit by: $ACTOR"
+          elif [ "$BRANCH" = "main" ] || [ "$BRANCH" = "Main" ] || [ "$BRANCH" = "Develop" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping review for protected branch: $BRANCH"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Proceeding with review for commit by: $ACTOR"
+            echo "Proceeding with review for commit by: $ACTOR on branch: $BRANCH"
           fi
 
       - name: Guard caller org
@@ -69,18 +74,32 @@ jobs:
       - name: Gather commit data
         if: steps.bot_check.outputs.skip != 'true'
         id: info
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           SHA="${GITHUB_SHA}"
           REPO="${GITHUB_REPOSITORY}"
           ACTOR="${GITHUB_ACTOR}"
           BRANCH="${GITHUB_REF_NAME}"
-          AUTHOR_NAME="$(git log -1 --pretty=%an "$SHA")"
+
+          GITHUB_NAME="$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/users/$ACTOR" | jq -r '.name // empty' || true)"
+
+          if [ -n "$GITHUB_NAME" ]; then
+            DEVELOPER_NAME="$GITHUB_NAME"
+          else
+            DEVELOPER_NAME="$ACTOR"
+          fi
+
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "author_name=$AUTHOR_NAME" >> "$GITHUB_OUTPUT"
+          echo "developer_name=$DEVELOPER_NAME" >> "$GITHUB_OUTPUT"
+
           # latest commit only
           git diff-tree --no-commit-id --name-status -r "$SHA" | tr -d '\r' > /tmp/changed.txt
 
@@ -415,7 +434,7 @@ jobs:
           SHA="${{ steps.info.outputs.sha }}"
           SHORT="${SHA:0:7}"
           ACTOR="${{ steps.info.outputs.actor }}"
-          AUTHOR_NAME="${{ steps.info.outputs.author_name }}"
+          DEVELOPER_NAME="${{ steps.info.outputs.developer_name }}"
           REPO="${{ steps.info.outputs.repo }}"
           BRANCH="${{ steps.info.outputs.branch }}"
           REVIEWED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -429,7 +448,7 @@ jobs:
 
           PAYLOAD="$(jq -n \
             --arg developer_handle "$ACTOR" \
-            --arg developer_name "$AUTHOR_NAME" \
+            --arg developer_name "$DEVELOPER_NAME" \
             --arg repo_name "$REPO" \
             --arg commit_sha "$SHA" \
             --arg short_sha "$SHORT" \
