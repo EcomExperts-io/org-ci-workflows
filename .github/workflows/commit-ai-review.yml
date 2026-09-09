@@ -6,10 +6,10 @@ on:
       CHANNEL_ID:
         required: true
         description: "Slack channel ID to post the review"
-      OPENAI_API_KEY_FOR_CODE_REVIEW_BOT:
+      OPENAI_API_KEY:
         required: true
         description: "OpenAI API key"
-      SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT:
+      SLACK_BOT_TOKEN:
         required: true
         description: "Slack bot token with chat:write"
 
@@ -268,7 +268,7 @@ jobs:
         if: steps.bot_check.outputs.skip != 'true'
         id: ai
         env:
-          OPENAI_API_KEY_FOR_CODE_REVIEW_BOT: ${{ secrets.OPENAI_API_KEY_FOR_CODE_REVIEW_BOT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -e
           jq -c -n \
@@ -286,7 +286,7 @@ jobs:
               ]
             }' > /tmp/openai_request.json
           RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
-            -H "Authorization: Bearer $OPENAI_API_KEY_FOR_CODE_REVIEW_BOT" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
             -d @/tmp/openai_request.json)
 
@@ -493,18 +493,18 @@ jobs:
         if: success() && steps.bot_check.outputs.skip != 'true'
         id: slack_main
         env:
-          SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT: ${{ secrets.SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: |
           set -euo pipefail
-          if [ -z "${SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT:-}" ]; then
-            echo "SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT is empty"
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
+            echo "SLACK_BOT_TOKEN is empty"
             exit 1
           fi
 
           # Post main message
           RESP="$(curl -sS -X POST \
-            -H "Authorization: Bearer $SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT" \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
             --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack_main.txt)" '{channel: $channel, text: $text}')" \
             https://slack.com/api/chat.postMessage)"
@@ -526,7 +526,7 @@ jobs:
       - name: Post detailed issues as thread reply
         if: success() && steps.bot_check.outputs.skip != 'true' && steps.prep.outputs.has_issues == 'true'
         env:
-          SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT: ${{ secrets.SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: |
           set -euo pipefail
@@ -539,7 +539,7 @@ jobs:
 
           # Post thread reply with detailed issues
           RESP="$(curl -sS -X POST \
-            -H "Authorization: Bearer $SLACK_BOT_TOKEN_FOR_CODE_REVIEW_BOT" \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/json; charset=utf-8" \
             --data "$(jq -n --arg channel "$CHANNEL_ID" --arg text "$(cat /tmp/slack_thread.txt)" --arg thread_ts "$TIMESTAMP" '{channel: $channel, text: $text, thread_ts: $thread_ts}')" \
             https://slack.com/api/chat.postMessage)"
